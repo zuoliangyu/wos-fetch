@@ -3,6 +3,42 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
+import {
+  Settings2,
+  Sparkles,
+  Database,
+  Workflow,
+  Moon,
+  Sun,
+  Github,
+  Upload,
+  Search,
+  Globe,
+  ExternalLink,
+  Loader2,
+  Download,
+  ShieldAlert,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { StatusBar } from "@/components/ui/status-bar";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ThemeProvider, useTheme } from "@/components/theme-provider";
+import { cn } from "@/lib/utils";
 
 // ----------------------------------------------------------------------------
 // Types matching the Rust IPC contract
@@ -92,7 +128,7 @@ interface TaskExportMeta {
 }
 
 // ----------------------------------------------------------------------------
-// Helpers
+// Publisher risk classification (drives badge color in login modal)
 // ----------------------------------------------------------------------------
 
 const PUBLISHER_RISK_HIGH = new Set([
@@ -107,20 +143,13 @@ const PUBLISHER_RISK_MEDIUM = new Set([
   "New England Journal of Medicine", "Science (AAAS)",
 ]);
 
-function publisherRiskClass(name: string): string {
-  if (PUBLISHER_RISK_HIGH.has(name)) return "risk-badge risk-high";
-  if (PUBLISHER_RISK_MEDIUM.has(name)) return "risk-badge risk-medium";
-  return "";
-}
-
-function publisherRiskLabel(name: string): string {
-  if (PUBLISHER_RISK_HIGH.has(name)) return "高风险";
-  if (PUBLISHER_RISK_MEDIUM.has(name)) return "中风险";
-  return "";
+function publisherRiskBadge(name: string) {
+  if (PUBLISHER_RISK_HIGH.has(name)) return { variant: "destructive" as const, label: "高风险" };
+  if (PUBLISHER_RISK_MEDIUM.has(name)) return { variant: "warning" as const, label: "中风险" };
+  return null;
 }
 
 // Wait for a task to complete by listening for the "task-done" event.
-// Returns the final TaskRecord on success.
 async function waitForTask(taskId: string): Promise<TaskRecord> {
   return new Promise((resolve, reject) => {
     let unlisten: (() => void) | null = null;
@@ -144,19 +173,39 @@ async function waitForTask(taskId: string): Promise<TaskRecord> {
 }
 
 // ----------------------------------------------------------------------------
-// App component
+// Sidebar configuration
 // ----------------------------------------------------------------------------
 
-export default function App() {
+type SectionId = "llm" | "query" | "input" | "pipeline";
+
+const SECTIONS: { id: SectionId; title: string; subtitle: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "llm", title: "LLM 配置", subtitle: "API Key / 模型 / 超时", icon: Settings2 },
+  { id: "query", title: "AI 检索式", subtitle: "主题 → WoS 表达式 / 规划", icon: Sparkles },
+  { id: "input", title: "数据输入", subtitle: "WoS 抓取 或 上传文件", icon: Database },
+  { id: "pipeline", title: "处理流程", subtitle: "相关性筛选 + 全文获取", icon: Workflow },
+];
+
+// ----------------------------------------------------------------------------
+// App root
+// ----------------------------------------------------------------------------
+
+export default function AppRoot() {
+  return (
+    <ThemeProvider>
+      <App />
+    </ThemeProvider>
+  );
+}
+
+function App() {
   // LLM config
   const [model, setModel] = useState("gpt-4o-mini");
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
   const [apiKey, setApiKey] = useState("");
   const [timeoutSec, setTimeoutSec] = useState(120);
 
-  // Card collapse states
-  const [cfgOpen, setCfgOpen] = useState(true);
-  const [queryOpen, setQueryOpen] = useState(true);
+  // Section nav
+  const [section, setSection] = useState<SectionId>("llm");
 
   // AI query/plan generation
   const [topic, setTopic] = useState("");
@@ -170,8 +219,8 @@ export default function App() {
   const [genPlanBusy, setGenPlanBusy] = useState(false);
   const [planSearchRunning, setPlanSearchRunning] = useState(false);
 
-  // WoS / upload
-  const [tab, setTab] = useState<"wos" | "upload">("wos");
+  // Data input
+  const [inputMode, setInputMode] = useState<"wos" | "upload">("wos");
   const [wosQuery, setWosQuery] = useState("");
   const [debugPort, setDebugPort] = useState(9222);
   const [maxPages, setMaxPages] = useState(5);
@@ -216,7 +265,7 @@ export default function App() {
     timeout_seconds: timeoutSec,
   }), [model, baseUrl, apiKey, timeoutSec]);
 
-  const llmConfigured = llmConfigArg.model && llmConfigArg.api_key;
+  const llmConfigured = !!(llmConfigArg.model && llmConfigArg.api_key);
 
   // -- Progress event subscription --
   useEffect(() => {
@@ -293,13 +342,14 @@ export default function App() {
 
   const fillQuery = (query: string) => {
     setWosQuery(query);
-    setTab("wos");
+    setInputMode("wos");
+    setSection("input");
     setWosStatus({ msg: "检索式已填入，可直接点击「搜索并抓取」", type: "ok" });
   };
 
-  // -- WoS search (single & plan batch) --
-  const startWosSearchTask = async (query: string, appendSessionId: string): Promise<string> => {
-    return invoke<string>("wos_search", {
+  // -- WoS search --
+  const startWosSearchTask = async (query: string, appendSessionId: string): Promise<string> =>
+    invoke<string>("wos_search", {
       args: {
         query,
         debug_port: debugPort,
@@ -308,7 +358,6 @@ export default function App() {
         append_session_id: appendSessionId,
       },
     });
-  };
 
   const doWosSearch = async () => {
     const query = wosQuery.trim();
@@ -332,7 +381,8 @@ export default function App() {
   const runPlanSearchAll = async () => {
     if (!plan || planSearchRunning) return;
     setPlanSearchRunning(true);
-    setTab("wos");
+    setSection("input");
+    setInputMode("wos");
     let mergedSessionId = "";
     const directions = plan.search_directions.slice();
     try {
@@ -513,7 +563,7 @@ export default function App() {
     setStep2Status(null);
   };
 
-  const openInBrowser = async (url: string) => {
+  const openPublisherInDebugBrowser = async (url: string) => {
     try {
       const resp = await invoke<{ ok: boolean; target_id: string; error: string }>("browser_open", {
         args: { url, debug_port: debugPort },
@@ -539,380 +589,741 @@ export default function App() {
     }
   };
 
-  // -- Render --
+  // --------------------------------------------------------------------------
+  // Render
+  // --------------------------------------------------------------------------
+
   const modalHasHighRisk = modalPublishers.some((p) => PUBLISHER_RISK_HIGH.has(p.name));
 
   return (
-    <div className="app">
-      <header>wos-fetch &mdash; 文献获取工具</header>
-      <div className="container">
+    <div className="flex h-screen flex-col overflow-hidden">
+      <TopBar repoUrl="https://github.com/zuoliangyu/wos-fetch" />
 
-        {/* LLM 配置 */}
-        <div className="card">
-          <div className="card-header collapsible" onClick={() => setCfgOpen(!cfgOpen)}>
-            LLM 配置 <span>{cfgOpen ? "▾" : "▸"}</span>
-          </div>
-          {cfgOpen && (
-            <div className="card-body">
-              <div className="row">
-                <div className="fgroup">
-                  <label>API Base URL</label>
-                  <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-                </div>
-                <div className="fgroup">
-                  <label>API Key</label>
-                  <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." />
-                </div>
-              </div>
-              <div className="row">
-                <div className="fgroup">
-                  <label>Model</label>
-                  <input type="text" value={model} onChange={(e) => setModel(e.target.value)} />
-                </div>
-                <div className="fgroup">
-                  <label>Timeout（秒）</label>
-                  <input type="number" value={timeoutSec} min={30} max={600} onChange={(e) => setTimeoutSec(+e.target.value)} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+      <div className="flex flex-1 min-h-0 gap-4 p-4">
+        <Sidebar
+          current={section}
+          onSelect={setSection}
+          llmReady={llmConfigured}
+          sessionLabel={sessionLabel}
+          screenedLabel={screenedLabel}
+        />
 
-        {/* AI 检索式生成 */}
-        <div className="card">
-          <div className="card-header collapsible" onClick={() => setQueryOpen(!queryOpen)}>
-            AI 检索式生成（可选） <span>{queryOpen ? "▾" : "▸"}</span>
-          </div>
-          {queryOpen && (
-            <div className="card-body">
-              <div className="fgroup">
-                <label>研究主题描述（中文，详细描述研究范围、关键词、时间范围、排除条件等）</label>
-                <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
-                  placeholder="例如：近五年基于深度学习的医学影像分割方法综述..." />
-              </div>
-              <div className="fgroup" style={{ marginBottom: 10 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 500 }}>
-                  <input type="checkbox" checked={oaOnly} onChange={(e) => setOaOnly(e.target.checked)} />
-                  仅 OA（开放获取）期刊 — 推荐用于课程论文
-                </label>
-                <div style={{ fontSize: 12, color: oaOnly ? "#666" : "#b54708", marginTop: 4, paddingLeft: 22 }}>
-                  {oaOnly
-                    ? "已限定 OA 期刊：抓取仅命中开放获取文献，可避免触发 Elsevier / Wiley / Springer 等出版商的反爬机制。"
-                    : "⚠ 未限定 OA：可能命中付费墙文献，频繁抓取容易导致 WoS 账号或 IP 被出版商封禁，请确认你的使用场景。"}
-                </div>
-              </div>
-              <div className="row" style={{ marginBottom: 10 }}>
-                <div className="fgroup">
-                  <label>检索方向数量（生成完整规划时）</label>
-                  <select value={directionCount} onChange={(e) => setDirectionCount(e.target.value)}>
-                    <option value="auto">自动（根据主题宽窄）</option>
-                    <option value="3">3 条</option>
-                    <option value="5">5 条</option>
-                    <option value="7">7 条</option>
-                    <option value="10">10 条</option>
-                  </select>
-                </div>
-                <div style={{ paddingTop: 18, display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <button className="btn-secondary btn-sm" onClick={generateQuery} disabled={genQueryBusy}>
-                    生成单条检索式
-                  </button>
-                  <button className="btn-purple btn-sm" onClick={generatePlan} disabled={genPlanBusy}>
-                    生成完整检索规划
-                  </button>
-                </div>
-              </div>
-              {queryGenStatus && (
-                <div className={`status-bar status-${queryGenStatus.type}`}>
-                  {queryGenStatus.spinner && <span className="spinner" />}
-                  {queryGenStatus.msg}
-                </div>
-              )}
-
-              {singleQueryVisible && (
-                <>
-                  <div className="fgroup">
-                    <label>生成的检索式（可直接编辑）</label>
-                    <textarea value={generatedQuery} onChange={(e) => setGeneratedQuery(e.target.value)} rows={3} />
-                  </div>
-                  <button className="btn-sm btn-primary" onClick={() => fillQuery(generatedQuery.trim())}>填入检索框</button>
-                </>
-              )}
-
-              {plan && (
-                <div>
-                  <hr />
-                  <div style={{ fontWeight: 600, color: "#444", marginBottom: 8, fontSize: 13 }}>
-                    检索规划结果（{plan.search_directions.length} 个方向）
-                  </div>
-                  <div style={{ fontSize: 12, color: "#555", marginBottom: 10, lineHeight: 1.6 }}>
-                    {[
-                      plan.normalized_topic && `主题：${plan.normalized_topic}`,
-                      plan.inferred_domain && `领域：${plan.inferred_domain}`,
-                      plan.review_objective && `目标：${plan.review_objective}`,
-                    ].filter(Boolean).join("　|　")}
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                    <button className="btn-primary btn-sm" onClick={runPlanSearchAll}
-                      disabled={planSearchRunning || !plan.search_directions.length}>
-                      全部检索
-                    </button>
-                  </div>
-                  {plan.search_directions.map((d, i) => (
-                    <div className="dir-card" key={i}>
-                      <div className="dir-card-head">
-                        <div className="dir-card-title">{d.direction_index || i + 1}. {d.direction_name}</div>
-                        <div className={`dir-status dir-status-${d.run_status || "pending"}`}>
-                          {d.run_status === "running" ? "检索中" :
-                           d.run_status === "ok" ? `完成 +${d.added_count || d.row_count || 0}` :
-                           d.run_status === "err" ? "失败" : "待执行"}
-                        </div>
-                      </div>
-                      {d.purpose && <div className="dir-card-meta">{d.purpose}</div>}
-                      <div className="dir-card-query" onClick={() => fillQuery(d.search_query)}>{d.search_query}</div>
-                      <div className="dir-card-meta">
-                        {d.suggested_section && `章节：${d.suggested_section}　`}
-                        {d.expected_records && `预期记录数：${d.expected_records}`}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="hint">点击检索式可将其填入下方 WoS 检索框</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 输入来源 */}
-        <div className="card">
-          <div className="card-header">输入来源</div>
-          <div className="card-body">
-            <div className="tabs">
-              <div className={`tab ${tab === "wos" ? "active" : ""}`} onClick={() => setTab("wos")}>WoS 自动搜索</div>
-              <div className={`tab ${tab === "upload" ? "active" : ""}`} onClick={() => setTab("upload")}>上传文件</div>
-            </div>
-
-            {tab === "wos" && (
-              <div>
-                <div className="row">
-                  <div className="fgroup">
-                    <label>WoS 检索式（Advanced Search 语法）</label>
-                    <textarea value={wosQuery} onChange={(e) => setWosQuery(e.target.value)} rows={3}
-                      placeholder="TS=(machine learning AND review) AND PY=(2019-2024)" />
-                  </div>
-                  <div>
-                    <div className="fgroup">
-                      <label>浏览器调试端口</label>
-                      <input type="number" value={debugPort} min={1024} max={65535} onChange={(e) => setDebugPort(+e.target.value)} />
-                    </div>
-                    <div className="fgroup">
-                      <label>最多抓取页数</label>
-                      <input type="number" value={maxPages} min={1} max={50} onChange={(e) => setMaxPages(+e.target.value)} />
-                    </div>
-                    <div className="fgroup">
-                      <label>每页最长等待（秒）</label>
-                      <input type="number" value={pageWait} min={5} max={120} onChange={(e) => setPageWait(+e.target.value)} />
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button className="btn-secondary btn-sm" onClick={checkTargets}>检测浏览器</button>
-                  <button className="btn-secondary btn-sm" onClick={launchBrowser}>启动浏览器</button>
-                  <button className="btn-primary" onClick={doWosSearch} disabled={wosBusy}>搜索并抓取</button>
-                </div>
-                {wosStatus && (
-                  <div className={`status-bar status-${wosStatus.type}`}>
-                    {wosStatus.spinner && <span className="spinner" />}
-                    {wosStatus.msg}
-                  </div>
-                )}
-              </div>
+        <main className="flex-1 min-w-0 overflow-y-auto pr-1">
+          <div className="mx-auto max-w-4xl space-y-4 pb-12">
+            {section === "llm" && (
+              <LlmSection
+                model={model} setModel={setModel}
+                baseUrl={baseUrl} setBaseUrl={setBaseUrl}
+                apiKey={apiKey} setApiKey={setApiKey}
+                timeoutSec={timeoutSec} setTimeoutSec={setTimeoutSec}
+                llmConfigured={llmConfigured}
+              />
             )}
 
-            {tab === "upload" && (
-              <div>
-                <div className="fgroup">
-                  <label>选择文件（CSV / Excel / ZIP）</label>
-                  <input type="file" ref={uploadInputRef} accept=".csv,.xlsx,.xls,.zip" />
-                </div>
-                <button className="btn-primary btn-sm" onClick={doUpload} disabled={uploadBusy}>上传</button>
-                {uploadStatus && (
-                  <div className={`status-bar status-${uploadStatus.type}`}>
-                    {uploadStatus.spinner && <span className="spinner" />}
-                    {uploadStatus.msg}
-                  </div>
-                )}
-              </div>
+            {section === "query" && (
+              <QuerySection
+                topic={topic} setTopic={setTopic}
+                directionCount={directionCount} setDirectionCount={setDirectionCount}
+                oaOnly={oaOnly} setOaOnly={setOaOnly}
+                generatedQuery={generatedQuery} setGeneratedQuery={setGeneratedQuery}
+                singleQueryVisible={singleQueryVisible}
+                plan={plan}
+                queryGenStatus={queryGenStatus}
+                genQueryBusy={genQueryBusy}
+                genPlanBusy={genPlanBusy}
+                planSearchRunning={planSearchRunning}
+                onGenerateQuery={generateQuery}
+                onGeneratePlan={generatePlan}
+                onFillQuery={fillQuery}
+                onRunPlanAll={runPlanSearchAll}
+              />
+            )}
+
+            {section === "input" && (
+              <InputSection
+                mode={inputMode} setMode={setInputMode}
+                wosQuery={wosQuery} setWosQuery={setWosQuery}
+                debugPort={debugPort} setDebugPort={setDebugPort}
+                maxPages={maxPages} setMaxPages={setMaxPages}
+                pageWait={pageWait} setPageWait={setPageWait}
+                wosStatus={wosStatus}
+                wosBusy={wosBusy}
+                uploadStatus={uploadStatus}
+                uploadBusy={uploadBusy}
+                uploadInputRef={uploadInputRef}
+                sessionLabel={sessionLabel}
+                onSearch={doWosSearch}
+                onCheckTargets={checkTargets}
+                onLaunchBrowser={launchBrowser}
+                onUpload={doUpload}
+              />
+            )}
+
+            {section === "pipeline" && (
+              <PipelineSection
+                hasSession={!!currentSessionId}
+                sessionLabel={sessionLabel}
+                screenedLabel={screenedLabel}
+                screenedReady={!!screenedSessionId}
+                topic={topic}
+                batchSize={batchSize} setBatchSize={setBatchSize}
+                step1Status={step1Status}
+                log1={log1}
+                screeningBusy={screeningBusy}
+                fulltextWorkers={fulltextWorkers} setFulltextWorkers={setFulltextWorkers}
+                browserWait={browserWait} setBrowserWait={setBrowserWait}
+                useBrowser={useBrowser} setUseBrowser={setUseBrowser}
+                step2Status={step2Status}
+                log2={log2}
+                fulltextBusy={fulltextBusy}
+                downloadable={downloadable}
+                onRunScreening={runScreening}
+                onSkipScreening={skipScreening}
+                onRunFulltext={runFulltext}
+                onDownload={downloadResult}
+              />
             )}
           </div>
-        </div>
-
-        {/* Step 1: Screening */}
-        <div className="card">
-          <div className="card-header step">
-            第一步：相关性筛选 <span className="step-label">必须步骤，LLM 自动评分</span>
-          </div>
-          <div className="card-body">
-            <div className="row" style={{ marginBottom: 12 }}>
-              <div className="fgroup">
-                <label>批次大小</label>
-                <input type="number" value={batchSize} min={1} max={20} onChange={(e) => setBatchSize(+e.target.value)} />
-              </div>
-              <div className="fgroup" style={{ paddingTop: 18 }}>
-                {sessionLabel && <span className="badge badge-ok">✓ {sessionLabel}</span>}
-                <div className="hint">数据就绪后按钮自动启用</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <button className="btn-success" onClick={runScreening} disabled={!currentSessionId || screeningBusy}>
-                运行相关性筛选
-              </button>
-              <button className="btn-secondary btn-sm" onClick={skipScreening} disabled={!currentSessionId}>
-                跳过筛选，直接获取全文
-              </button>
-              <span className="hint">已完成筛选的文件可跳过此步骤</span>
-            </div>
-            {step1Status && (
-              <div className={`status-bar status-${step1Status.type}`}>
-                {step1Status.spinner && <span className="spinner" />}
-                {step1Status.msg}
-              </div>
-            )}
-            {log1.length > 0 && (
-              <div className="log">
-                {log1.map((line, i) => {
-                  const cls = line.startsWith("[ERROR]") ? "log-line-err" :
-                              line.startsWith("[!! 警告]") ? "log-line-warn" : "";
-                  return <div key={i} className={cls}>{line}</div>;
-                })}
-              </div>
-            )}
-            {screenedLabel && (
-              <div style={{ marginTop: 10 }}>
-                <span className="badge badge-blue">{screenedLabel}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Step 2: Fulltext */}
-        {screenedSessionId && (
-          <div className="card">
-            <div className="card-header step2">
-              第二步：获取全文 <span className="step-label">筛选完成后可执行</span>
-            </div>
-            <div className="card-body">
-              <div className="warning-banner">
-                <strong>⚠ 抓取前必看：</strong>批量直接 HTTP 抓取出版商网站有明确风险。已有用户因抓取速度过快被 Elsevier、Wiley 等查到，<strong>导致整个学校的机构 IP 被封禁</strong>，影响所有师生正常访问。
-                <ul>
-                  <li>经验值：<strong>单次 &lt; 200 篇基本安全</strong>；超过 200 请分批跑</li>
-                  <li>并发数保持 <strong>1–2</strong>，不要图快调到 5+</li>
-                  <li>同一批次篇数较多时，建议勾选「浏览器 fallback」走已登录会话</li>
-                </ul>
-              </div>
-              <div className="row" style={{ marginBottom: 12 }}>
-                <div className="fgroup">
-                  <label>并发数（同时获取文章数）</label>
-                  <input type="number" value={fulltextWorkers} min={1} max={10} onChange={(e) => setFulltextWorkers(+e.target.value)} />
-                </div>
-                <div className="fgroup">
-                  <label>浏览器等待时间（秒，启用 fallback 时）</label>
-                  <input type="number" value={browserWait} min={5} max={120} onChange={(e) => setBrowserWait(+e.target.value)} />
-                </div>
-              </div>
-              <div className="fgroup">
-                <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                  <input type="checkbox" checked={useBrowser} onChange={(e) => setUseBrowser(e.target.checked)} />
-                  使用浏览器 fallback 抓取
-                </label>
-                <div className="hint">勾选后 HTTP 失败时自动用浏览器重试；浏览器模式建议并发数设为 1-2</div>
-              </div>
-              <button className="btn-success" onClick={runFulltext} disabled={fulltextBusy}>
-                开始获取全文
-              </button>
-              {step2Status && (
-                <div className={`status-bar status-${step2Status.type}`}>
-                  {step2Status.spinner && <span className="spinner" />}
-                  {step2Status.msg}
-                </div>
-              )}
-              {log2.length > 0 && (
-                <div className="log">
-                  {log2.map((line, i) => {
-                    const cls = line.startsWith("[ERROR]") ? "log-line-err" :
-                                line.startsWith("[!! 警告]") ? "log-line-warn" : "";
-                    return <div key={i} className={cls}>{line}</div>;
-                  })}
-                </div>
-              )}
-              {downloadable && (
-                <div style={{ marginTop: 12 }}>
-                  <button className="btn-primary" onClick={downloadResult}>下载结果</button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        <footer className="app-footer">
-          <span>
-            作者：<strong>左岚</strong>
-            {" · "}
-            <a href="#" onClick={(e) => { e.preventDefault(); void shellOpen("https://github.com/zuoliangyu"); }}>
-              @zuoliangyu
-            </a>
-          </span>
-          <span>
-            仓库：
-            <a href="#" onClick={(e) => { e.preventDefault(); void shellOpen("https://github.com/zuoliangyu/wos-fetch"); }}>
-              github.com/zuoliangyu/wos-fetch
-            </a>
-          </span>
-        </footer>
-
+        </main>
       </div>
 
-      {/* Login modal */}
-      <div className={`modal-overlay ${modalOpen ? "active" : ""}`}>
-        <div className="modal-box">
-          <div className="modal-title">请先登录出版商网站</div>
-          <p className="modal-desc">
-            检测到以下出版商的文章，请在浏览器中打开并登录（机构网络或账号登录均可），完成后点击「确认已登录，开始获取」。
-          </p>
+      <Footer />
+
+      <Dialog open={modalOpen} onOpenChange={(o) => { if (!o) closeModal(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>请先登录出版商网站</DialogTitle>
+            <DialogDescription>
+              检测到以下出版商的文章，请在浏览器中打开并登录（机构网络或账号登录均可），完成后点击「确认已登录，开始获取」。
+            </DialogDescription>
+          </DialogHeader>
+
           {modalHasHighRisk && (
-            <div className="warning-banner">
-              <strong>⚠ 检测到「高风险」出版商：</strong>这类站点对高频抓取识别极敏感（已有真实案例：学校 IP 因批量抓取 Elsevier 被全段封禁）。请务必：
-              <ul>
-                <li>勾选「使用浏览器 fallback」走已登录会话</li>
-                <li>并发数压到 1，不要并行</li>
-                <li>每批次 <strong>&lt; 200 篇</strong>，超量请分批</li>
-              </ul>
+            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+              <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                包含高风险出版商，频繁抓取可能触发反爬。建议改用「仅 OA 期刊」模式或仅获取免费下载的文献。
+              </span>
             </div>
           )}
-          <div style={{ overflowY: "auto", flex: 1, marginBottom: 4 }}>
-            {modalPublishers.map((p, i) => (
-              <div className="publisher-item" key={i}>
-                <div>
-                  <span className="publisher-name">{p.name}</span>
-                  <span className="publisher-count">（{p.count} 篇）</span>
-                  {publisherRiskClass(p.name) && (
-                    <span className={publisherRiskClass(p.name)} style={{ marginLeft: 6 }}>
-                      {publisherRiskLabel(p.name)}
-                    </span>
-                  )}
+
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {modalPublishers.map((p, idx) => {
+              const risk = publisherRiskBadge(p.name);
+              return (
+                <div key={idx} className="flex items-center justify-between rounded-md border border-border bg-card/60 p-3">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium truncate">{p.name}</span>
+                    <span className="text-xs text-muted-foreground">× {p.count}</span>
+                    {risk && <Badge variant={risk.variant}>{risk.label}</Badge>}
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => openPublisherInDebugBrowser(p.url)}>
+                    打开 <ExternalLink className="h-3 w-3" />
+                  </Button>
                 </div>
-                <button className="btn-primary btn-sm" style={{ whiteSpace: "nowrap", marginLeft: 12 }}
-                  onClick={() => openInBrowser(p.url)}>
-                  在调试浏览器中打开 ↗
-                </button>
+              );
+            })}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={closeModal}>取消</Button>
+            <Button variant="success" onClick={proceedFetch}>确认已登录，开始获取</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// TopBar / Sidebar / Footer
+// ----------------------------------------------------------------------------
+
+function TopBar({ repoUrl }: { repoUrl: string }) {
+  const { theme, toggle } = useTheme();
+  return (
+    <header className="surface-toolbar sticky top-0 z-30 flex items-center justify-between gap-4 border-b px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <div className="grid h-8 w-8 place-items-center rounded-md bg-primary text-primary-foreground">
+          <Search className="h-4 w-4" />
+        </div>
+        <div className="flex flex-col leading-tight">
+          <span className="text-sm font-semibold">wos-fetch</span>
+          <span className="text-[10px] text-muted-foreground">Web of Science 文献获取工具</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="GitHub 仓库"
+          onClick={() => void shellOpen(repoUrl)}
+        >
+          <Github className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="切换主题" onClick={toggle}>
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function Sidebar({
+  current,
+  onSelect,
+  llmReady,
+  sessionLabel,
+  screenedLabel,
+}: {
+  current: SectionId;
+  onSelect: (id: SectionId) => void;
+  llmReady: boolean;
+  sessionLabel: string;
+  screenedLabel: string;
+}) {
+  return (
+    <nav className="surface-sidebar hidden w-60 shrink-0 flex-col rounded-lg p-3 md:flex">
+      <ul className="space-y-1">
+        {SECTIONS.map((s) => {
+          const Icon = s.icon;
+          const active = current === s.id;
+          return (
+            <li key={s.id}>
+              <button
+                onClick={() => onSelect(s.id)}
+                className={cn(
+                  "group flex w-full items-start gap-3 rounded-md border border-transparent px-3 py-2 text-left transition-colors",
+                  active
+                    ? "border-primary/30 bg-primary/10 text-primary shadow-sm"
+                    : "hover:bg-accent/60 hover:text-accent-foreground"
+                )}
+              >
+                <Icon className={cn("h-4 w-4 mt-0.5 shrink-0", active ? "text-primary" : "text-muted-foreground")} />
+                <div className="flex flex-col min-w-0">
+                  <span className="text-sm font-medium leading-tight">{s.title}</span>
+                  <span className={cn("text-[11px] leading-tight", active ? "text-primary/70" : "text-muted-foreground")}>{s.subtitle}</span>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <Separator className="my-3" />
+
+      <div className="space-y-2 px-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <span>LLM</span>
+          <Badge variant={llmReady ? "success" : "outline"}>{llmReady ? "就绪" : "未配置"}</Badge>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span>数据</span>
+          <span className="truncate text-foreground/80">{sessionLabel || "—"}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span>筛选</span>
+          <span className="truncate text-foreground/80">{screenedLabel || "—"}</span>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function Footer() {
+  return (
+    <footer className="surface-toolbar flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px] text-muted-foreground">
+      <span>
+        作者：<span className="font-medium text-foreground">左岚</span>
+        {" · "}
+        <button className="hover:underline" onClick={() => void shellOpen("https://github.com/zuoliangyu")}>
+          @zuoliangyu
+        </button>
+      </span>
+      <span>
+        <button className="hover:underline" onClick={() => void shellOpen("https://github.com/zuoliangyu/wos-fetch")}>
+          github.com/zuoliangyu/wos-fetch
+        </button>
+      </span>
+    </footer>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Sections
+// ----------------------------------------------------------------------------
+
+function LlmSection(props: {
+  model: string; setModel: (v: string) => void;
+  baseUrl: string; setBaseUrl: (v: string) => void;
+  apiKey: string; setApiKey: (v: string) => void;
+  timeoutSec: number; setTimeoutSec: (v: number) => void;
+  llmConfigured: boolean;
+}) {
+  const { model, setModel, baseUrl, setBaseUrl, apiKey, setApiKey, timeoutSec, setTimeoutSec, llmConfigured } = props;
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>LLM 配置</CardTitle>
+          <Badge variant={llmConfigured ? "success" : "outline"}>
+            {llmConfigured ? "就绪" : "未配置"}
+          </Badge>
+        </div>
+        <CardDescription>
+          AI 检索式生成 / 相关性筛选会使用此配置。支持 OpenAI 兼容协议（含本地中转 / 各家代理）。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <Field label="Model" hint="例如 gpt-4o-mini / deepseek-chat / glm-4-air">
+          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
+        </Field>
+        <Field label="Base URL" hint="OpenAI 兼容 endpoint，含 /v1">
+          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+        </Field>
+        <Field label="API Key" hint="只保留在本地内存，应用退出即清空" className="sm:col-span-2">
+          <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." />
+        </Field>
+        <Field label="超时（秒）" hint="LLM 调用单次超时；生成完整规划时自动放宽到至少 180 秒">
+          <Input
+            type="number"
+            min={30}
+            value={timeoutSec}
+            onChange={(e) => setTimeoutSec(Math.max(30, Number(e.target.value) || 0))}
+          />
+        </Field>
+      </CardContent>
+    </Card>
+  );
+}
+
+function QuerySection(props: {
+  topic: string; setTopic: (v: string) => void;
+  directionCount: string; setDirectionCount: (v: string) => void;
+  oaOnly: boolean; setOaOnly: (v: boolean) => void;
+  generatedQuery: string; setGeneratedQuery: (v: string) => void;
+  singleQueryVisible: boolean;
+  plan: Plan | null;
+  queryGenStatus: Status | null;
+  genQueryBusy: boolean;
+  genPlanBusy: boolean;
+  planSearchRunning: boolean;
+  onGenerateQuery: () => void;
+  onGeneratePlan: () => void;
+  onFillQuery: (q: string) => void;
+  onRunPlanAll: () => void;
+}) {
+  const {
+    topic, setTopic, directionCount, setDirectionCount, oaOnly, setOaOnly,
+    generatedQuery, setGeneratedQuery, singleQueryVisible, plan,
+    queryGenStatus, genQueryBusy, genPlanBusy, planSearchRunning,
+    onGenerateQuery, onGeneratePlan, onFillQuery, onRunPlanAll,
+  } = props;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>AI 检索式生成（可选）</CardTitle>
+          <CardDescription>把中文研究主题转换成 WoS 高级检索表达式；或生成完整的多方向综述检索规划。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field label="研究主题描述">
+            <Textarea
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              rows={4}
+              placeholder="例如：近五年基于深度学习的医学影像分割方法综述..."
+            />
+          </Field>
+
+          <div className="flex items-start gap-3 rounded-md border border-border bg-accent/30 p-3">
+            <Switch checked={oaOnly} onCheckedChange={setOaOnly} id="oa-only" />
+            <div className="flex flex-col gap-0.5">
+              <label htmlFor="oa-only" className="text-sm font-medium cursor-pointer">
+                仅 OA（开放获取）期刊 — 推荐用于课程论文
+              </label>
+              <p className={cn("text-xs leading-relaxed", oaOnly ? "text-muted-foreground" : "text-warning-foreground")}>
+                {oaOnly
+                  ? '已限定 OA 期刊：抓取仅命中开放获取文献，可避免触发 Elsevier / Wiley / Springer 等出版商的反爬机制。'
+                  : '⚠ 未限定 OA：可能命中付费墙文献，频繁抓取容易导致 WoS 账号或 IP 被出版商封禁。'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="检索方向数量（生成完整规划时）" className="flex-1 min-w-[200px]">
+              <SelectNative value={directionCount} onChange={(v) => setDirectionCount(v)}>
+                <option value="auto">自动（根据主题宽窄）</option>
+                <option value="3">3 条</option>
+                <option value="5">5 条</option>
+                <option value="7">7 条</option>
+                <option value="10">10 条</option>
+              </SelectNative>
+            </Field>
+            <Button variant="secondary" onClick={onGenerateQuery} disabled={genQueryBusy}>
+              {genQueryBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              生成单条检索式
+            </Button>
+            <Button onClick={onGeneratePlan} disabled={genPlanBusy}>
+              {genPlanBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              生成完整检索规划
+            </Button>
+          </div>
+
+          {queryGenStatus && (
+            <StatusBar variant={queryGenStatus.type} message={queryGenStatus.msg} spinner={queryGenStatus.spinner} />
+          )}
+
+          {singleQueryVisible && (
+            <Field label="生成的检索式（可手工编辑）">
+              <Textarea
+                value={generatedQuery}
+                onChange={(e) => setGeneratedQuery(e.target.value)}
+                rows={4}
+                className="font-mono text-xs"
+              />
+              <div className="mt-2 flex justify-end">
+                <Button size="sm" variant="success" onClick={() => onFillQuery(generatedQuery)}>
+                  填入检索框 ↓
+                </Button>
+              </div>
+            </Field>
+          )}
+        </CardContent>
+      </Card>
+
+      {plan && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle>检索规划（{plan.search_directions.length} 个方向）</CardTitle>
+                <CardDescription className="mt-1">
+                  {plan.normalized_topic || "—"}{plan.inferred_domain ? ` · ${plan.inferred_domain}` : ""}
+                </CardDescription>
+              </div>
+              <Button size="sm" onClick={onRunPlanAll} disabled={planSearchRunning}>
+                {planSearchRunning && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                一键运行全部
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {plan.search_directions.map((d, idx) => (
+              <div key={idx} className="rounded-md border border-border bg-card/60 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-muted-foreground shrink-0">#{idx + 1}</span>
+                    <span className="text-sm font-medium truncate">{d.direction_name || d.purpose || "方向"}</span>
+                  </div>
+                  <DirectionStatusBadge status={d.run_status} added={d.added_count} />
+                </div>
+                {d.purpose && <p className="text-xs text-muted-foreground">{d.purpose}</p>}
+                <pre className="overflow-x-auto rounded bg-muted/50 p-2 font-mono text-[11px] leading-relaxed">{d.search_query}</pre>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="outline" onClick={() => onFillQuery(d.search_query)}>
+                    填入检索框
+                  </Button>
+                </div>
               </div>
             ))}
-          </div>
-          <div className="modal-actions">
-            <button className="btn-secondary" onClick={closeModal}>取消</button>
-            <button className="btn-success" onClick={proceedFetch}>确认已登录，开始获取</button>
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
+  );
+}
+
+function DirectionStatusBadge({ status, added }: { status?: string; added?: number }) {
+  if (status === "ok") return <Badge variant="success">+{added ?? 0}</Badge>;
+  if (status === "running") return <Badge variant="warning">运行中</Badge>;
+  if (status === "err") return <Badge variant="destructive">失败</Badge>;
+  return <Badge variant="outline">待运行</Badge>;
+}
+
+function InputSection(props: {
+  mode: "wos" | "upload"; setMode: (m: "wos" | "upload") => void;
+  wosQuery: string; setWosQuery: (v: string) => void;
+  debugPort: number; setDebugPort: (v: number) => void;
+  maxPages: number; setMaxPages: (v: number) => void;
+  pageWait: number; setPageWait: (v: number) => void;
+  wosStatus: Status | null;
+  wosBusy: boolean;
+  uploadStatus: Status | null;
+  uploadBusy: boolean;
+  uploadInputRef: React.RefObject<HTMLInputElement>;
+  sessionLabel: string;
+  onSearch: () => void;
+  onCheckTargets: () => void;
+  onLaunchBrowser: () => void;
+  onUpload: () => void;
+}) {
+  const {
+    mode, setMode, wosQuery, setWosQuery, debugPort, setDebugPort, maxPages, setMaxPages,
+    pageWait, setPageWait, wosStatus, wosBusy, uploadStatus, uploadBusy, uploadInputRef,
+    sessionLabel, onSearch, onCheckTargets, onLaunchBrowser, onUpload,
+  } = props;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle>数据输入</CardTitle>
+            <CardDescription>从 WoS 在线抓取，或上传本地导出的 CSV/Excel/ZIP。</CardDescription>
+          </div>
+          {sessionLabel && <Badge variant="success">已就绪：{sessionLabel}</Badge>}
+        </div>
+
+        <div className="mt-3 inline-flex rounded-md border border-border bg-card/60 p-0.5 text-xs">
+          <ModeTab active={mode === "wos"} onClick={() => setMode("wos")} icon={Globe}>WoS 检索</ModeTab>
+          <ModeTab active={mode === "upload"} onClick={() => setMode("upload")} icon={Upload}>上传文件</ModeTab>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {mode === "wos" ? (
+          <>
+            <Field label="WoS 高级检索式">
+              <Textarea
+                value={wosQuery}
+                onChange={(e) => setWosQuery(e.target.value)}
+                rows={3}
+                placeholder='TS=("deep learning" AND "medical image") AND PY=(2020-2024)'
+                className="font-mono text-xs"
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="调试端口">
+                <Input type="number" value={debugPort} onChange={(e) => setDebugPort(Number(e.target.value) || 9222)} />
+              </Field>
+              <Field label="抓取页数">
+                <Input type="number" min={1} value={maxPages} onChange={(e) => setMaxPages(Math.max(1, Number(e.target.value) || 1))} />
+              </Field>
+              <Field label="每页等待（秒）">
+                <Input type="number" min={5} value={pageWait} onChange={(e) => setPageWait(Math.max(5, Number(e.target.value) || 5))} />
+              </Field>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={onSearch} disabled={wosBusy}>
+                {wosBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <Search className="h-3.5 w-3.5" />
+                搜索并抓取
+              </Button>
+              <Button variant="outline" onClick={onCheckTargets}>检测浏览器</Button>
+              <Button variant="outline" onClick={onLaunchBrowser}>启动 / 复用浏览器</Button>
+            </div>
+
+            {wosStatus && (
+              <StatusBar variant={wosStatus.type} message={wosStatus.msg} spinner={wosStatus.spinner} />
+            )}
+          </>
+        ) : (
+          <>
+            <Field label="选择文件（.csv / .xlsx / .xls / .zip）">
+              <input
+                type="file"
+                ref={uploadInputRef}
+                accept=".csv,.xlsx,.xls,.zip"
+                className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-secondary-foreground file:hover:bg-secondary/80"
+              />
+            </Field>
+            <div>
+              <Button onClick={onUpload} disabled={uploadBusy}>
+                {uploadBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                <Upload className="h-3.5 w-3.5" />
+                上传
+              </Button>
+            </div>
+            {uploadStatus && (
+              <StatusBar variant={uploadStatus.type} message={uploadStatus.msg} spinner={uploadStatus.spinner} />
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ModeTab({
+  active, onClick, icon: Icon, children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded px-3 py-1 transition-colors",
+        active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {children}
+    </button>
+  );
+}
+
+function PipelineSection(props: {
+  hasSession: boolean;
+  sessionLabel: string;
+  screenedLabel: string;
+  screenedReady: boolean;
+  topic: string;
+  batchSize: number; setBatchSize: (v: number) => void;
+  step1Status: Status | null;
+  log1: string[];
+  screeningBusy: boolean;
+  fulltextWorkers: number; setFulltextWorkers: (v: number) => void;
+  browserWait: number; setBrowserWait: (v: number) => void;
+  useBrowser: boolean; setUseBrowser: (v: boolean) => void;
+  step2Status: Status | null;
+  log2: string[];
+  fulltextBusy: boolean;
+  downloadable: string | null;
+  onRunScreening: () => void;
+  onSkipScreening: () => void;
+  onRunFulltext: () => void;
+  onDownload: () => void;
+}) {
+  const {
+    hasSession, sessionLabel, screenedLabel, screenedReady,
+    batchSize, setBatchSize, step1Status, log1, screeningBusy,
+    fulltextWorkers, setFulltextWorkers, browserWait, setBrowserWait,
+    useBrowser, setUseBrowser, step2Status, log2, fulltextBusy, downloadable,
+    onRunScreening, onSkipScreening, onRunFulltext, onDownload,
+  } = props;
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle>第一步：相关性筛选</CardTitle>
+              <CardDescription>调用 LLM 对每条记录与你的研究主题进行打分，筛除明显不相关的文献。</CardDescription>
+            </div>
+            {hasSession ? <Badge variant="success">数据：{sessionLabel}</Badge> : <Badge variant="outline">需先完成数据输入</Badge>}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="批大小（每次提交给 LLM 的记录数）">
+              <Input type="number" min={1} max={50} value={batchSize} onChange={(e) => setBatchSize(Math.max(1, Number(e.target.value) || 1))} />
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onRunScreening} disabled={!hasSession || screeningBusy}>
+              {screeningBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              运行相关性筛选
+            </Button>
+            <Button variant="outline" onClick={onSkipScreening} disabled={!hasSession}>
+              跳过筛选
+            </Button>
+            {screenedLabel && <Badge variant="success">{screenedLabel}</Badge>}
+          </div>
+          {step1Status && (
+            <StatusBar variant={step1Status.type} message={step1Status.msg} spinner={step1Status.spinner} />
+          )}
+          {log1.length > 0 && <LogView lines={log1} />}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <CardTitle>第二步：全文获取</CardTitle>
+              <CardDescription>按 DOI 抓取摘要 / 全文，可选启用调试浏览器对付强反爬站点。</CardDescription>
+            </div>
+            {screenedReady ? <Badge variant="success">筛选已就绪</Badge> : <Badge variant="outline">需先完成或跳过筛选</Badge>}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="并发 worker 数">
+              <Input type="number" min={1} max={8} value={fulltextWorkers} onChange={(e) => setFulltextWorkers(Math.max(1, Number(e.target.value) || 1))} />
+            </Field>
+            <Field label="浏览器单页等待（秒）">
+              <Input type="number" min={5} value={browserWait} onChange={(e) => setBrowserWait(Math.max(5, Number(e.target.value) || 5))} />
+            </Field>
+            <Field label="启用浏览器回退">
+              <div className="flex h-9 items-center gap-3 rounded-md border border-border bg-card/70 px-3 text-xs">
+                <Switch checked={useBrowser} onCheckedChange={setUseBrowser} />
+                <span className="text-muted-foreground">遇到反爬时回退到浏览器</span>
+              </div>
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={onRunFulltext} disabled={!screenedReady || fulltextBusy}>
+              {fulltextBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              获取全文
+            </Button>
+            {downloadable && (
+              <Button variant="success" onClick={onDownload}>
+                <Download className="h-3.5 w-3.5" />
+                下载结果
+              </Button>
+            )}
+          </div>
+          {step2Status && (
+            <StatusBar variant={step2Status.type} message={step2Status.msg} spinner={step2Status.spinner} />
+          )}
+          {log2.length > 0 && <LogView lines={log2} />}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Small helpers
+// ----------------------------------------------------------------------------
+
+function Field({
+  label, hint, children, className,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <Label>{label}</Label>
+      {children}
+      {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+    </div>
+  );
+}
+
+function SelectNative({
+  value, onChange, children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex h-9 w-full rounded-md border border-border bg-card/70 px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+    >
+      {children}
+    </select>
+  );
+}
+
+function LogView({ lines }: { lines: string[] }) {
+  return (
+    <pre className="max-h-48 overflow-y-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+      {lines.map((l, i) => <div key={i}>{l}</div>)}
+    </pre>
   );
 }
