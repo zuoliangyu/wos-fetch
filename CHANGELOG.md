@@ -2,6 +2,30 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [SemVer](https://semver.org/lang/zh-CN/) 约定。
 
+## [0.2.0] - 2026-05-12
+
+界面全面重做 + LLM 易用性增强。
+
+### Added
+
+- **shadcn / Tailwind 重做的界面**：HSL 双主题 token、glassy surface 卡片层、Radix Dialog / Switch / Label 等 11 个 UI 原语，全套 lucide-react 图标
+- **左侧导航 + 主区**布局取代单列纵向堆叠：四个分区（LLM 配置 / AI 检索式 / 数据输入 / 处理流程），侧栏实时显示 LLM 就绪 / 数据会话 / 筛选状态徽章
+- **暗色模式**：右上角太阳/月亮按钮一键切换，跟随系统 `prefers-color-scheme`，选择持久化到 localStorage
+- **模型自动扫描**：Model 输入框右侧的刷新按钮调用 `scan_models` 命令 → GET `<base_url>/v1/models`，把结果灌进 HTML `<datalist>`，输入框现在支持打字补全 / 下拉选择
+- **应用版本号**显示在左下角（通过 Vite `define` 从 `package.json` 注入），方便用户和 Release Notes 对应
+- `release.yml` 现在自动从 `CHANGELOG.md` 抽取对应版本的段落作为 GitHub Release body，不再需要手动 `gh release edit`
+
+### Changed
+
+- 默认 Base URL 从 `https://api.openai.com/v1` 改为用户偏好的中转 `https://e-flowcode.cc/v1`
+- WoS 检索式构造接受 `OA` 字段（用于 OA-only 模式）
+- 几乎所有交互元素改用新 UI 原语；登录确认走 Radix Dialog，OA-only 开关改用 Switch
+
+### Fixed
+
+- 修复因 `pnpm-lock.yaml` 滞后导致 CI `--frozen-lockfile` 失败
+- 修复 release workflow 中 Rust 1.95 新增 clippy lint（`while_let_loop` / `collapsible_match` / `sort_by_key`）在 CI 单独红的问题
+
 ## [0.1.0] - 2026-05-12
 
 首个公开发布版本：Tauri 桌面应用全量重写。

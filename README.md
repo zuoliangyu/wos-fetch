@@ -1,12 +1,18 @@
 # wos-fetch — Web of Science 文献获取工具
 
+[![Release](https://img.shields.io/github/v/release/zuoliangyu/wos-fetch)](https://github.com/zuoliangyu/wos-fetch/releases)
+[![CI](https://github.com/zuoliangyu/wos-fetch/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/wos-fetch/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 一个面向本地使用场景的桌面应用（**Rust + Tauri 2 + React**），提供以下能力：
 
 - 连接已登录的 Chromium 浏览器，通过 Web of Science 页面执行检索并抓取结果
 - 上传 CSV / Excel / ZIP 格式的文献表
-- 使用 LLM 对记录做相关性筛选
+- 使用 LLM 对记录做相关性筛选（可选「仅 OA 期刊」模式以降低封号风险）
 - 基于 DOI 批量获取文章全文，支持 HTTP 抓取和浏览器 fallback
 - 导出结果为 Excel 或 ZIP 包
+
+界面采用 shadcn / Tailwind 风格的左侧导航 + 主区布局，支持暗色模式切换，应用版本号显示在窗口左下角便于和 Release Notes 对应。每次更新的具体变更记录在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 项目定位
 

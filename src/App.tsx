@@ -860,12 +860,15 @@ function Sidebar({
 function Footer() {
   return (
     <footer className="surface-toolbar flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2 text-[11px] text-muted-foreground">
-      <span>
-        作者：<span className="font-medium text-foreground">左岚</span>
-        {" · "}
-        <button className="hover:underline" onClick={() => void shellOpen("https://github.com/zuoliangyu")}>
-          @zuoliangyu
-        </button>
+      <span className="flex items-center gap-2">
+        <Badge variant="outline" className="font-mono">v{__APP_VERSION__}</Badge>
+        <span>
+          作者：<span className="font-medium text-foreground">左岚</span>
+          {" · "}
+          <button className="hover:underline" onClick={() => void shellOpen("https://github.com/zuoliangyu")}>
+            @zuoliangyu
+          </button>
+        </span>
       </span>
       <span>
         <button className="hover:underline" onClick={() => void shellOpen("https://github.com/zuoliangyu/wos-fetch")}>
