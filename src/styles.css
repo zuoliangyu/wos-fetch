@@ -1,0 +1,82 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #f5f6fa;
+  color: #222;
+  font-size: 14px;
+}
+
+.app header {
+  background: #2c3e50;
+  color: #fff;
+  padding: 14px 24px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.container {
+  max-width: 920px;
+  margin: 24px auto;
+  padding: 0 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.card-header {
+  background: #34495e;
+  color: #fff;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.card-body {
+  padding: 16px;
+}
+
+.hint {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.btn-primary {
+  padding: 9px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  background: #2980b9;
+  color: #fff;
+  transition: opacity 0.15s;
+}
+
+.btn-primary:hover {
+  opacity: 0.85;
+}
+
+.status-bar {
+  padding: 8px 12px;
+  border-radius: 5px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-info {
+  background: #d6eaf8;
+  color: #1a5276;
+}
