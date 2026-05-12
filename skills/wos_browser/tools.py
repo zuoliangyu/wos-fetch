@@ -28,8 +28,8 @@ except ImportError:  # pragma: no cover - non-Windows fallback
 DEFAULT_DEBUG_PORT = 9222
 DOI_PATTERN = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
 WOS_START_URL = "https://www.webofscience.com/wos/woscc/advanced-search"
-DEFAULT_BROWSER_PROFILE_DIR = Path.home() / "doi-fulltext-agent-profile" / "browser-wos-profile"
-DEFAULT_BROWSER_PROFILE_ROOT = Path.home() / "doi-fulltext-agent-profile"
+DEFAULT_BROWSER_PROFILE_DIR = Path.home() / "wos-fetch-profile" / "browser-wos-profile"
+DEFAULT_BROWSER_PROFILE_ROOT = Path.home() / "wos-fetch-profile"
 _LAUNCHED_BROWSER_PROCESSES: list[subprocess.Popen] = []
 
 CHROMIUM_BROWSER_CANDIDATES: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
