@@ -39,6 +39,7 @@ pub fn run() {
             commands::generate_query,
             commands::generate_plan,
             commands::validate_llm,
+            commands::scan_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

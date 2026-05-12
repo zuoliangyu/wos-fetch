@@ -18,6 +18,7 @@ import {
   Loader2,
   Download,
   ShieldAlert,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -200,9 +201,12 @@ export default function AppRoot() {
 function App() {
   // LLM config
   const [model, setModel] = useState("gpt-4o-mini");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [baseUrl, setBaseUrl] = useState("https://e-flowcode.cc/v1");
   const [apiKey, setApiKey] = useState("");
   const [timeoutSec, setTimeoutSec] = useState(120);
+  const [scannedModels, setScannedModels] = useState<string[]>([]);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanStatus, setScanStatus] = useState<Status | null>(null);
 
   // Section nav
   const [section, setSection] = useState<SectionId>("llm");
@@ -260,12 +264,31 @@ function App() {
 
   const llmConfigArg = useMemo(() => ({
     model: model.trim(),
-    base_url: baseUrl.trim() || "https://api.openai.com/v1",
+    base_url: baseUrl.trim() || "https://e-flowcode.cc/v1",
     api_key: apiKey.trim(),
     timeout_seconds: timeoutSec,
   }), [model, baseUrl, apiKey, timeoutSec]);
 
   const llmConfigured = !!(llmConfigArg.model && llmConfigArg.api_key);
+
+  const scanModels = async () => {
+    if (!apiKey.trim()) { alert("请先填写 API Key"); return; }
+    setScanBusy(true);
+    setScanStatus({ msg: "正在扫描可用模型...", type: "info", spinner: true });
+    try {
+      const ids = await invoke<string[]>("scan_models", { args: { ...llmConfigArg, model: model.trim() } });
+      setScannedModels(ids);
+      if (ids.length === 0) {
+        setScanStatus({ msg: "未返回任何模型，请检查 Base URL 是否正确", type: "err" });
+      } else {
+        setScanStatus({ msg: `已扫描到 ${ids.length} 个模型，可在 Model 输入框点击展开选择`, type: "ok" });
+      }
+    } catch (err: any) {
+      setScanStatus({ msg: String(err?.message || err), type: "err" });
+    } finally {
+      setScanBusy(false);
+    }
+  };
 
   // -- Progress event subscription --
   useEffect(() => {
@@ -617,6 +640,10 @@ function App() {
                 apiKey={apiKey} setApiKey={setApiKey}
                 timeoutSec={timeoutSec} setTimeoutSec={setTimeoutSec}
                 llmConfigured={llmConfigured}
+                scannedModels={scannedModels}
+                scanBusy={scanBusy}
+                scanStatus={scanStatus}
+                onScanModels={scanModels}
               />
             )}
 
@@ -859,8 +886,15 @@ function LlmSection(props: {
   apiKey: string; setApiKey: (v: string) => void;
   timeoutSec: number; setTimeoutSec: (v: number) => void;
   llmConfigured: boolean;
+  scannedModels: string[];
+  scanBusy: boolean;
+  scanStatus: Status | null;
+  onScanModels: () => void;
 }) {
-  const { model, setModel, baseUrl, setBaseUrl, apiKey, setApiKey, timeoutSec, setTimeoutSec, llmConfigured } = props;
+  const {
+    model, setModel, baseUrl, setBaseUrl, apiKey, setApiKey, timeoutSec, setTimeoutSec,
+    llmConfigured, scannedModels, scanBusy, scanStatus, onScanModels,
+  } = props;
   return (
     <Card>
       <CardHeader>
@@ -875,11 +909,38 @@ function LlmSection(props: {
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
-        <Field label="Model" hint="例如 gpt-4o-mini / deepseek-chat / glm-4-air">
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
+        <Field
+          label="Model"
+          hint={scannedModels.length > 0
+            ? `已扫描到 ${scannedModels.length} 个模型 — 在输入框点击或开始打字可下拉选择`
+            : "可手动填写，或点击右侧扫描按钮拉取 base URL 下可用模型"}
+        >
+          <div className="flex gap-2">
+            <Input
+              list="wos-fetch-model-options"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gpt-4o-mini"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={onScanModels}
+              disabled={scanBusy}
+              aria-label="扫描可用模型"
+              title="扫描 base_url 下的可用模型"
+            >
+              <RefreshCw className={cn("h-4 w-4", scanBusy && "animate-spin")} />
+            </Button>
+          </div>
+          <datalist id="wos-fetch-model-options">
+            {scannedModels.map((m) => <option key={m} value={m} />)}
+          </datalist>
         </Field>
         <Field label="Base URL" hint="OpenAI 兼容 endpoint，含 /v1">
-          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://e-flowcode.cc/v1" />
         </Field>
         <Field label="API Key" hint="只保留在本地内存，应用退出即清空" className="sm:col-span-2">
           <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-..." />
@@ -892,6 +953,11 @@ function LlmSection(props: {
             onChange={(e) => setTimeoutSec(Math.max(30, Number(e.target.value) || 0))}
           />
         </Field>
+        {scanStatus && (
+          <div className="sm:col-span-2">
+            <StatusBar variant={scanStatus.type} message={scanStatus.msg} spinner={scanStatus.spinner} />
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -491,6 +491,82 @@ pub async fn chat_text(config: &LlmConfig, messages: &[ChatMessage]) -> AppResul
     )))
 }
 
+/// Build the GET endpoint for OpenAI-compatible `list models`.
+///
+/// Honors a `base_url` that already ends with `/v1` (don't double up); falls
+/// back to appending `/v1/models` otherwise. Trailing `/chat/completions` or
+/// `/responses` are stripped so the same input that drives chat also works
+/// here.
+pub fn build_models_url(base_url: &str) -> String {
+    let normalized = base_url.trim().trim_end_matches('/');
+    let stem = normalized
+        .strip_suffix("/chat/completions")
+        .or_else(|| normalized.strip_suffix("/responses"))
+        .unwrap_or(normalized);
+    if stem.ends_with("/v1") {
+        format!("{stem}/models")
+    } else {
+        format!("{stem}/v1/models")
+    }
+}
+
+/// Fetch the available models from an OpenAI-compatible `/v1/models` endpoint.
+/// Returns model ids sorted alphabetically. Tolerates the two common shapes
+/// (`{"data":[{"id":...}]}` or `{"models":[{"id":...}]}`) and also a bare
+/// array of strings/objects.
+pub async fn list_models(config: &LlmConfig) -> AppResult<Vec<String>> {
+    if config.api_key.trim().is_empty() {
+        return Err(AppError::BadInput("请先填写 API Key。".into()));
+    }
+    let url = build_models_url(&config.base_url);
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds.max(15)))
+        .build()
+        .map_err(|e| AppError::Other(format!("无法构建 HTTP 客户端：{e}")))?;
+    let resp = client
+        .get(&url)
+        .bearer_auth(config.api_key.trim())
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| AppError::Other(format!("请求 {url} 失败：{e}")))?;
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| AppError::Other(format!("读取响应失败：{e}")))?;
+    if !status.is_success() {
+        let snippet: String = body.chars().take(300).collect();
+        return Err(AppError::Llm(format!(
+            "模型列表接口返回 HTTP {status}：{snippet}"
+        )));
+    }
+    let parsed: Value = serde_json::from_str(&body)
+        .map_err(|e| AppError::Llm(format!("响应不是合法 JSON：{e}")))?;
+    let items = parsed
+        .get("data")
+        .or_else(|| parsed.get("models"))
+        .or(Some(&parsed))
+        .and_then(Value::as_array)
+        .ok_or_else(|| AppError::Llm("响应中找不到模型列表（data / models 字段）。".into()))?;
+    let mut ids: Vec<String> = items
+        .iter()
+        .filter_map(|item| match item {
+            Value::String(s) => Some(s.clone()),
+            Value::Object(_) => item
+                .get("id")
+                .or_else(|| item.get("name"))
+                .and_then(Value::as_str)
+                .map(|s| s.to_string()),
+            _ => None,
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    Ok(ids)
+}
+
 /// Lightweight reachability check used by the UI's "validate connection" button.
 pub async fn validate_llm_connection(config: &LlmConfig) -> AppResult<String> {
     let messages = vec![ChatMessage {
@@ -524,6 +600,30 @@ mod tests {
         );
         assert!(prefers_responses_api("https://x.com/v1/responses"));
         assert!(!prefers_responses_api("https://x.com/v1"));
+    }
+
+    #[test]
+    fn models_url_handles_v1_suffix() {
+        assert_eq!(
+            build_models_url("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://api.openai.com/v1/"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://api.openai.com"),
+            "https://api.openai.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://x.com/v1/chat/completions"),
+            "https://x.com/v1/models"
+        );
+        assert_eq!(
+            build_models_url("https://x.com/v1/responses"),
+            "https://x.com/v1/models"
+        );
     }
 
     #[test]

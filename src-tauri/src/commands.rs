@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use crate::core::llm_client::{validate_llm_connection, LlmConfig};
+use crate::core::llm_client::{list_models, validate_llm_connection, LlmConfig};
 use crate::core::table_io::{read_table, serialize_result_table, Table};
 use crate::core::text_normalize::validate_wos_search_query;
 use crate::skills::fulltext_acquisition::{
@@ -1036,4 +1036,15 @@ pub async fn validate_llm(args: LlmConfigArg) -> Result<String, String> {
     validate_llm_connection(&llm_config)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Probe an OpenAI-compatible endpoint for the list of model ids. The `model`
+/// field on the arg is unused — this only needs base_url + api_key.
+#[tauri::command]
+pub async fn scan_models(args: LlmConfigArg) -> Result<Vec<String>, String> {
+    let mut llm_config: LlmConfig = args.into();
+    if llm_config.model.trim().is_empty() {
+        llm_config.model = "placeholder".into();
+    }
+    list_models(&llm_config).await.map_err(|e| e.to_string())
 }
