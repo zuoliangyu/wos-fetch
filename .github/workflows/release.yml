@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ''
+          - platform: macos-14
+            args: '--target universal-apple-darwin'
+          - platform: ubuntu-22.04
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ startsWith(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: .
+          tagName: ${{ github.ref_name }}
+          releaseName: 'wos-fetch ${{ github.ref_name }}'
+          releaseBody: |
+            ## Downloads
+
+            | Platform | Installer | Portable |
+            |----------|-----------|----------|
+            | Windows | `.msi` / `.exe` (NSIS) | `*-windows-portable.zip` |
+            | macOS (Universal) | `.dmg` | — |
+            | Linux | `.deb` / `.AppImage` | — |
+
+            > Windows 便携版解压即用，无需安装。需要系统已安装 WebView2（Win10/11 默认内置）。
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Create Windows portable zip
+        if: matrix.platform == 'windows-latest'
+        id: portable
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/release/wos-fetch.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Executable not found at $exePath"
+            exit 1
+          }
+          $zipName = "wos-fetch-${{ github.ref_name }}-windows-portable.zip"
+          Compress-Archive -Path $exePath -DestinationPath $zipName -Force
+          "PORTABLE_ZIP=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "Created portable zip: $zipName"
+
+      - name: Upload portable zip to release
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" "${{ steps.portable.outputs.PORTABLE_ZIP }}" --clobber
