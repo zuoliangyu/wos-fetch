@@ -166,10 +166,8 @@ fn balance_truncated_json(candidate: &str) -> String {
         match ch {
             '{' => stack.push('}'),
             '[' => stack.push(']'),
-            '}' | ']' => {
-                if stack.last() == Some(&ch) {
-                    stack.pop();
-                }
+            '}' | ']' if stack.last() == Some(&ch) => {
+                stack.pop();
             }
             _ => {}
         }

@@ -378,10 +378,7 @@ async fn stream_chat_completion_text(
     while let Some(item) = byte_stream.next().await {
         let bytes = item?;
         buffer.extend_from_slice(&bytes);
-        loop {
-            let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') else {
-                break;
-            };
+        while let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') {
             let raw_line: Vec<u8> = buffer.drain(..=newline_pos).collect();
             let line = String::from_utf8_lossy(&raw_line).trim().to_string();
             if line.is_empty() {

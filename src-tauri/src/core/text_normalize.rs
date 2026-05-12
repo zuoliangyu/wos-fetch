@@ -365,19 +365,18 @@ fn validate_token_sequence(tokens: &[QueryToken]) -> AppResult<()> {
                     }
                 }
             }
-            TokenKind::Field => {
+            TokenKind::Field
                 if next.map(|t| {
                     matches!(
                         t.kind,
                         TokenKind::LParen | TokenKind::Term | TokenKind::Field
                     )
-                }) != Some(true)
-                {
-                    return Err(AppError::BadInput(format!(
-                        "字段 {}= 后缺少检索内容。",
-                        token.value
-                    )));
-                }
+                }) != Some(true) =>
+            {
+                return Err(AppError::BadInput(format!(
+                    "字段 {}= 后缺少检索内容。",
+                    token.value
+                )));
             }
             TokenKind::LParen => {
                 if matches!(next.map(|t| t.kind), Some(TokenKind::RParen)) {
