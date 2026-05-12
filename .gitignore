@@ -26,3 +26,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# --- Claude Code local state ---
+.claude/settings.local.json

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "@tauri-apps/plugin-fs";
 
 // ----------------------------------------------------------------------------
 // Types matching the Rust IPC contract
@@ -86,10 +85,9 @@ interface TaskDoneEvent {
   error: string;
 }
 
-interface TaskDownloadResponse {
-  bytes: number[];
+interface TaskExportMeta {
   filename: string;
-  mime: string;
+  ext: string;
 }
 
 // ----------------------------------------------------------------------------
@@ -162,6 +160,7 @@ export default function App() {
   // AI query/plan generation
   const [topic, setTopic] = useState("");
   const [directionCount, setDirectionCount] = useState("auto");
+  const [oaOnly, setOaOnly] = useState(true);
   const [generatedQuery, setGeneratedQuery] = useState("");
   const [singleQueryVisible, setSingleQueryVisible] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -259,7 +258,7 @@ export default function App() {
     setQueryGenStatus({ msg: "正在生成检索式...", type: "info", spinner: true });
     try {
       const query = await invoke<string>("generate_query", {
-        args: { topic: topic.trim(), llm: llmConfigArg },
+        args: { topic: topic.trim(), llm: llmConfigArg, oa_only: oaOnly },
       });
       setGeneratedQuery(query);
       setSingleQueryVisible(true);
@@ -279,7 +278,7 @@ export default function App() {
     setQueryGenStatus({ msg: "正在生成完整检索规划（可能需要 30-60 秒）...", type: "info", spinner: true });
     try {
       const data = await invoke<any>("generate_plan", {
-        args: { topic: topic.trim(), llm: { ...llmConfigArg, timeout_seconds: Math.max(180, timeoutSec) }, direction_count: directionCount },
+        args: { topic: topic.trim(), llm: { ...llmConfigArg, timeout_seconds: Math.max(180, timeoutSec) }, direction_count: directionCount, oa_only: oaOnly },
       });
       const dirs: DirectionItem[] = (data.search_directions || []).map((d: any) => ({ ...d, run_status: "pending", row_count: 0, added_count: 0 }));
       setPlan({ ...data, search_directions: dirs });
@@ -527,13 +526,13 @@ export default function App() {
   const downloadResult = async () => {
     if (!downloadable) return;
     try {
-      const resp = await invoke<TaskDownloadResponse>("task_download", { taskId: downloadable });
+      const meta = await invoke<TaskExportMeta>("task_export_meta", { taskId: downloadable });
       const dest = await save({
-        defaultPath: resp.filename,
-        filters: [{ name: resp.filename.endsWith(".zip") ? "ZIP" : "Excel", extensions: [resp.filename.split(".").pop() || "xlsx"] }],
+        defaultPath: meta.filename,
+        filters: [{ name: meta.ext === "zip" ? "ZIP" : "Excel", extensions: [meta.ext] }],
       });
       if (!dest) return;
-      await writeFile(dest, new Uint8Array(resp.bytes));
+      await invoke("task_save_to", { taskId: downloadable, dest });
     } catch (err: any) {
       alert("保存失败：" + String(err?.message || err));
     }
@@ -589,6 +588,17 @@ export default function App() {
                 <label>研究主题描述（中文，详细描述研究范围、关键词、时间范围、排除条件等）</label>
                 <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4}
                   placeholder="例如：近五年基于深度学习的医学影像分割方法综述..." />
+              </div>
+              <div className="fgroup" style={{ marginBottom: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontWeight: 500 }}>
+                  <input type="checkbox" checked={oaOnly} onChange={(e) => setOaOnly(e.target.checked)} />
+                  仅 OA（开放获取）期刊 — 推荐用于课程论文
+                </label>
+                <div style={{ fontSize: 12, color: oaOnly ? "#666" : "#b54708", marginTop: 4, paddingLeft: 22 }}>
+                  {oaOnly
+                    ? "已限定 OA 期刊：抓取仅命中开放获取文献，可避免触发 Elsevier / Wiley / Springer 等出版商的反爬机制。"
+                    : "⚠ 未限定 OA：可能命中付费墙文献，频繁抓取容易导致 WoS 账号或 IP 被出版商封禁，请确认你的使用场景。"}
+                </div>
               </div>
               <div className="row" style={{ marginBottom: 10 }}>
                 <div className="fgroup">

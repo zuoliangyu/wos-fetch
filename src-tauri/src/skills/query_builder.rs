@@ -64,6 +64,27 @@ pub const WOS_QUERY_SYSTEM_PROMPT: &str = concat!(
     "只返回检索表达式，不要解释、markdown 或代码块。",
 );
 
+/// Inject hint when `oa_only` mode is on. Appended to the system prompt.
+pub const OA_ONLY_PROMPT_HINT: &str = concat!(
+    "用户启用了「仅 OA 期刊」模式：在生成的表达式末尾追加 ` AND OA=(\"All Open Access\")` ",
+    "把检索范围限定到开放获取文献，避免抓取付费墙文献触发出版商反爬。",
+);
+
+const OA_CONSTRAINT_SUFFIX: &str = " AND OA=(\"All Open Access\")";
+
+/// Append the OA filter to a WoS query if it does not already restrict OA.
+/// Idempotent: returns the input unchanged when `OA=` already appears.
+pub fn append_oa_constraint(query: &str) -> String {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    if trimmed.to_ascii_uppercase().contains("OA=") {
+        return trimmed.to_string();
+    }
+    format!("({trimmed}){OA_CONSTRAINT_SUFFIX}")
+}
+
 fn strip_wrapping_quotes(value: &str) -> String {
     let text = value.trim();
     if text.len() >= 2 {
@@ -76,7 +97,11 @@ fn strip_wrapping_quotes(value: &str) -> String {
     text.to_string()
 }
 
-pub async fn build_wos_search_query(topic_text: &str, config: &LlmConfig) -> AppResult<String> {
+pub async fn build_wos_search_query(
+    topic_text: &str,
+    config: &LlmConfig,
+    oa_only: bool,
+) -> AppResult<String> {
     let topic = topic_text.trim();
     if topic.is_empty() {
         return Err(AppError::BadInput("请输入研究主题。".into()));
@@ -84,11 +109,13 @@ pub async fn build_wos_search_query(topic_text: &str, config: &LlmConfig) -> App
     if config.model.trim().is_empty() || config.api_key.trim().is_empty() {
         return Err(AppError::BadInput("请配置 model 和 api_key。".into()));
     }
+    let system_prompt = if oa_only {
+        format!("{WOS_QUERY_SYSTEM_PROMPT}\n{OA_ONLY_PROMPT_HINT}")
+    } else {
+        WOS_QUERY_SYSTEM_PROMPT.into()
+    };
     let messages = vec![
-        ChatMessage {
-            role: "system".into(),
-            content: WOS_QUERY_SYSTEM_PROMPT.into(),
-        },
+        ChatMessage { role: "system".into(), content: system_prompt },
         ChatMessage {
             role: "user".into(),
             content: format!("中文研究主题或限制条件：\n{topic}"),
@@ -99,7 +126,8 @@ pub async fn build_wos_search_query(topic_text: &str, config: &LlmConfig) -> App
     let fence_stripped = strip_markdown_fence(&raw);
     let unquoted = strip_wrapping_quotes(&fence_stripped);
     let cleaned = QUERY_LABEL_RE.replace(&unquoted, "").to_string();
-    let validated = validate_wos_search_query(&cleaned)?;
+    let with_oa = if oa_only { append_oa_constraint(&cleaned) } else { cleaned };
+    let validated = validate_wos_search_query(&with_oa)?;
     if validated.is_empty() {
         return Err(AppError::Llm("模型返回了空检索式。".into()));
     }
@@ -404,6 +432,7 @@ pub async fn build_review_plan(
     topic_text: &str,
     config: &LlmConfig,
     direction_count: &str,
+    oa_only: bool,
 ) -> AppResult<Value> {
     let topic = topic_text.trim();
     if topic.is_empty() {
@@ -413,8 +442,13 @@ pub async fn build_review_plan(
         return Err(AppError::BadInput("请配置 model 和 api_key。".into()));
     }
     let count_instruction = direction_count_instruction(direction_count);
+    let oa_block = if oa_only {
+        format!("\nOA 限定：{OA_ONLY_PROMPT_HINT} 每个 direction 的 search_query 都必须包含 `OA=(\"All Open Access\")`。")
+    } else {
+        String::new()
+    };
     let user_prompt = format!(
-        "## 规划协议\n{PLANNER_PROTOCOL}\n\n## 当前任务\n研究主题：{topic}\n检索方向数量规则：{count_instruction}\n\n优先保持计划简洁实用，不要为了完整性堆叠过多层级。如果主题边界清晰，优先返回更少但更高质量的检索方向。\n\n请只返回符合协议的 JSON 对象，不要返回 Markdown、解释或代码块。",
+        "## 规划协议\n{PLANNER_PROTOCOL}\n\n## 当前任务\n研究主题：{topic}\n检索方向数量规则：{count_instruction}{oa_block}\n\n优先保持计划简洁实用，不要为了完整性堆叠过多层级。如果主题边界清晰，优先返回更少但更高质量的检索方向。\n\n请只返回符合协议的 JSON 对象，不要返回 Markdown、解释或代码块。",
     );
     let messages = vec![
         ChatMessage { role: "system".into(), content: PLANNER_SYSTEM_PROMPT.into() },
@@ -423,7 +457,25 @@ pub async fn build_review_plan(
     let cfg = LlmConfig { temperature: Some(0.25), ..config.clone() };
     let raw = chat_text(&cfg, &messages).await?;
     let parsed = load_json_object(&raw)?;
-    normalize_review_plan(parsed)
+    let mut plan = normalize_review_plan(parsed)?;
+    if oa_only {
+        enforce_oa_on_plan(&mut plan);
+    }
+    Ok(plan)
+}
+
+/// Walk every `search_directions[*].search_query` and ensure it carries an
+/// `OA=` constraint. Run after `normalize_review_plan` when `oa_only` is on.
+fn enforce_oa_on_plan(plan: &mut Value) {
+    let Some(directions) = plan.get_mut("search_directions").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for direction in directions {
+        let Some(obj) = direction.as_object_mut() else { continue };
+        let Some(query) = obj.get("search_query").and_then(Value::as_str) else { continue };
+        let updated = append_oa_constraint(query);
+        obj.insert("search_query".into(), Value::String(updated));
+    }
 }
 
 // Silence unused-import warnings when only some helpers are reachable in tests.
@@ -448,6 +500,51 @@ mod tests {
         let v = Value::String("a; b\nc".into());
         let got = as_string_list(&v);
         assert_eq!(got, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn append_oa_wraps_and_appends() {
+        let got = append_oa_constraint("TS=(foo)");
+        assert_eq!(got, "(TS=(foo)) AND OA=(\"All Open Access\")");
+    }
+
+    #[test]
+    fn append_oa_is_idempotent() {
+        let query = "TS=(foo) AND OA=(\"All Open Access\")";
+        assert_eq!(append_oa_constraint(query), query);
+    }
+
+    #[test]
+    fn append_oa_skips_empty() {
+        assert_eq!(append_oa_constraint("   "), "");
+    }
+
+    #[test]
+    fn append_oa_passes_wos_validator() {
+        let appended = append_oa_constraint("TS=(machine learning) AND PY=(2020-2024)");
+        let validated = validate_wos_search_query(&appended).expect("should validate");
+        assert!(validated.contains("OA="));
+    }
+
+    #[test]
+    fn enforce_oa_rewrites_every_direction() {
+        let mut plan = json!({
+            "search_directions": [
+                { "search_query": "TS=(a) AND DT=(Review)" },
+                { "search_query": "TS=(b)" },
+                { "search_query": "TS=(c) AND OA=(\"All Open Access\")" },
+            ]
+        });
+        enforce_oa_on_plan(&mut plan);
+        let dirs = plan["search_directions"].as_array().unwrap();
+        for d in dirs {
+            assert!(d["search_query"].as_str().unwrap().to_ascii_uppercase().contains("OA="));
+        }
+        // idempotent on the third entry
+        assert_eq!(
+            dirs[2]["search_query"].as_str().unwrap(),
+            "TS=(c) AND OA=(\"All Open Access\")"
+        );
     }
 
     #[test]

@@ -41,7 +41,7 @@ fn wos_field_tags() -> &'static HashSet<&'static str> {
     static TAGS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         [
             "AB", "AD", "AI", "AK", "ALL", "AU", "CF", "CI", "CU", "DO", "DOP", "DT", "ED", "FD",
-            "FG", "FO", "FPY", "FT", "GP", "IS", "KP", "OG", "OO", "PMID", "PS", "PUBL", "PY",
+            "FG", "FO", "FPY", "FT", "GP", "IS", "KP", "OA", "OG", "OO", "PMID", "PS", "PUBL", "PY",
             "SA", "SDG", "SG", "SO", "SU", "TI", "TMAC", "TMIC", "TMSO", "TS", "UT", "WC", "ZP",
         ]
         .into_iter()

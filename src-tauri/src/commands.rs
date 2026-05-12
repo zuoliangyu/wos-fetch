@@ -839,17 +839,16 @@ pub async fn task_status(
 }
 
 #[derive(Debug, Serialize)]
-pub struct TaskDownloadResponse {
-    pub bytes: Vec<u8>,
+pub struct TaskExportMeta {
     pub filename: String,
-    pub mime: String,
+    pub ext: String,
 }
 
 #[tauri::command]
-pub async fn task_download(
+pub fn task_export_meta(
     state: State<'_, AppState>,
     task_id: String,
-) -> Result<TaskDownloadResponse, String> {
+) -> Result<TaskExportMeta, String> {
     let task = state
         .lock()
         .tasks
@@ -860,22 +859,42 @@ pub async fn task_download(
         return Err("结果未就绪".into());
     }
     let ext = if task.result_format == "zip" { "zip" } else { "xlsx" };
-    let mime = if ext == "zip" {
-        "application/zip"
-    } else {
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    };
-    Ok(TaskDownloadResponse {
-        bytes: task.result_bytes,
+    Ok(TaskExportMeta {
         filename: format!("fetch_result.{ext}"),
-        mime: mime.into(),
+        ext: ext.into(),
     })
+}
+
+#[tauri::command]
+pub fn task_save_to(
+    state: State<'_, AppState>,
+    task_id: String,
+    dest: String,
+) -> Result<(), String> {
+    let bytes = {
+        let guard = state.lock();
+        let task = guard
+            .tasks
+            .get(&task_id)
+            .ok_or_else(|| "task not found".to_string())?;
+        if task.result_bytes.is_empty() {
+            return Err("结果未就绪".into());
+        }
+        task.result_bytes.clone()
+    };
+    std::fs::write(&dest, &bytes).map_err(|e| format!("写入失败：{e}"))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct GenerateQueryArgs {
     pub topic: String,
     pub llm: LlmConfigArg,
+    #[serde(default = "default_oa_only")]
+    pub oa_only: bool,
+}
+
+fn default_oa_only() -> bool {
+    true
 }
 
 #[tauri::command]
@@ -888,7 +907,7 @@ pub async fn generate_query(args: GenerateQueryArgs) -> Result<String, String> {
     if llm_config.model.trim().is_empty() || llm_config.api_key.trim().is_empty() {
         return Err("请配置 model 和 api_key".into());
     }
-    build_wos_search_query(topic, &llm_config)
+    build_wos_search_query(topic, &llm_config, args.oa_only)
         .await
         .map_err(|e| e.to_string())
 }
@@ -899,6 +918,8 @@ pub struct GeneratePlanArgs {
     pub llm: LlmConfigArg,
     #[serde(default = "default_direction_count")]
     pub direction_count: String,
+    #[serde(default = "default_oa_only")]
+    pub oa_only: bool,
 }
 
 fn default_direction_count() -> String {
@@ -915,7 +936,7 @@ pub async fn generate_plan(args: GeneratePlanArgs) -> Result<Value, String> {
     if llm_config.model.trim().is_empty() || llm_config.api_key.trim().is_empty() {
         return Err("请配置 model 和 api_key".into());
     }
-    build_review_plan(topic, &llm_config, &args.direction_count)
+    build_review_plan(topic, &llm_config, &args.direction_count, args.oa_only)
         .await
         .map_err(|e| e.to_string())
 }
