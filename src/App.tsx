@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 
 // ----------------------------------------------------------------------------
 // Types matching the Rust IPC contract
@@ -851,6 +852,22 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <footer className="app-footer">
+          <span>
+            作者：<strong>左岚</strong>
+            {" · "}
+            <a href="#" onClick={(e) => { e.preventDefault(); void shellOpen("https://github.com/zuoliangyu"); }}>
+              @zuoliangyu
+            </a>
+          </span>
+          <span>
+            仓库：
+            <a href="#" onClick={(e) => { e.preventDefault(); void shellOpen("https://github.com/zuoliangyu/wos-fetch"); }}>
+              github.com/zuoliangyu/wos-fetch
+            </a>
+          </span>
+        </footer>
 
       </div>
 
