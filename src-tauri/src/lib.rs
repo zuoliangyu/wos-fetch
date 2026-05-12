@@ -23,7 +23,23 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![commands::ping])
+        .manage(commands::new_app_state())
+        .invoke_handler(tauri::generate_handler![
+            commands::ping,
+            commands::upload_file,
+            commands::wos_targets,
+            commands::wos_launch,
+            commands::wos_search,
+            commands::run_screening,
+            commands::browser_open,
+            commands::run_fulltext_publishers,
+            commands::run_fulltext,
+            commands::task_status,
+            commands::task_download,
+            commands::generate_query,
+            commands::generate_plan,
+            commands::validate_llm,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
