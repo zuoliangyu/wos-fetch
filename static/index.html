@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wos-fetch — 文献获取</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f5f6fa;color:#222;font-size:14px}
+header{background:#2c3e50;color:#fff;padding:14px 24px;font-size:18px;font-weight:600;letter-spacing:.3px}
+.container{max-width:920px;margin:24px auto;padding:0 16px}
+.card{background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1);margin-bottom:16px;overflow:hidden}
+.card-header{background:#34495e;color:#fff;padding:10px 16px;font-weight:600;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+.card-header:hover{background:#2c3e50}
+.card-header.step{background:#1a6b3c;cursor:default}
+.card-header.step:hover{background:#1a6b3c}
+.card-header.step2{background:#154360;cursor:default}
+.card-header.step2:hover{background:#154360}
+.card-body{padding:16px}
+label{display:block;font-weight:500;margin-bottom:4px;color:#444;font-size:13px}
+input[type=text],input[type=number],input[type=password],textarea,select{width:100%;padding:7px 10px;border:1px solid #ccc;border-radius:5px;font-size:13px;font-family:inherit;transition:border .2s}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#2980b9}
+textarea{resize:vertical;min-height:70px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fgroup{margin-bottom:12px}
+.tabs{display:flex;border-bottom:2px solid #e0e0e0;margin-bottom:16px}
+.tab{padding:8px 18px;cursor:pointer;border-radius:5px 5px 0 0;font-weight:500;color:#555;transition:all .15s}
+.tab.active{background:#2980b9;color:#fff;border-bottom:2px solid #2980b9}
+.tab:hover:not(.active){background:#ecf0f1}
+.panel{display:none}.panel.active{display:block}
+button{padding:9px 20px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:600;transition:opacity .15s}
+button:hover{opacity:.85}
+button:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary{background:#2980b9;color:#fff}
+.btn-success{background:#27ae60;color:#fff}
+.btn-secondary{background:#7f8c8d;color:#fff}
+.btn-purple{background:#8e44ad;color:#fff}
+.btn-sm{padding:6px 14px;font-size:12px}
+.status-bar{padding:8px 12px;border-radius:5px;margin-top:8px;font-size:12px;font-weight:500}
+.status-ok{background:#d5f5e3;color:#1e8449}
+.status-err{background:#fadbd8;color:#922b21}
+.status-info{background:#d6eaf8;color:#1a5276}
+.log{background:#1a1a2e;color:#a0f0a0;border-radius:6px;padding:12px;font-family:'Cascadia Code','Consolas',monospace;font-size:12px;line-height:1.6;min-height:80px;max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-top:10px}
+.log-line-err{color:#ff6b6b}
+.log-line-done{color:#ffd700;font-weight:bold}
+.log-line-warn{color:#ff9f43;font-weight:bold;background:rgba(255,159,67,.08);padding:2px 6px;border-radius:3px;border-left:3px solid #ff9f43}
+.hint{color:#888;font-size:12px;margin-top:4px}
+hr{border:none;border-top:1px solid #e0e0e0;margin:14px 0}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-ok{background:#d5f5e3;color:#1e8449}
+.badge-blue{background:#d6eaf8;color:#1a5276}
+.dir-card{border:1px solid #d0e8f5;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#f0f8ff}
+.dir-card-title{font-weight:600;color:#1a5276;margin-bottom:4px;font-size:13px}
+.dir-card-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.dir-card-query{font-family:'Consolas',monospace;font-size:12px;background:#e8f4fc;padding:6px 8px;border-radius:4px;word-break:break-all;cursor:pointer;border:1px dashed #aad4ea}
+.dir-card-query:hover{background:#d0eaf8}
+.dir-card-meta{font-size:11px;color:#666;margin-top:4px}
+.dir-status{font-size:11px;font-weight:600;white-space:nowrap}
+.dir-status-pending{color:#7f8c8d}
+.dir-status-running{color:#b9770e}
+.dir-status-ok{color:#1e8449}
+.dir-status-err{color:#922b21}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid #ccc;border-top-color:#2980b9;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.step-label{font-size:11px;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:10px;margin-left:8px;font-weight:normal}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal-box{background:#fff;border-radius:10px;padding:24px;max-width:520px;width:90%;box-shadow:0 4px 20px rgba(0,0,0,.3);max-height:85vh;display:flex;flex-direction:column}
+#publisherList{overflow-y:auto;flex:1;margin-bottom:4px}
+.modal-title{font-size:15px;font-weight:700;margin-bottom:8px;color:#2c3e50}
+.modal-desc{font-size:12px;color:#555;margin-bottom:14px;line-height:1.6}
+.publisher-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #d5e8f5;border-radius:6px;margin-bottom:8px;background:#f0f8ff}
+.publisher-name{font-weight:600;color:#1a5276;font-size:13px}
+.publisher-count{font-size:11px;color:#888}
+.publisher-link{color:#2980b9;font-size:12px;text-decoration:none;white-space:nowrap;margin-left:12px}
+.publisher-link:hover{text-decoration:underline}
+.modal-actions{display:flex;gap:10px;margin-top:16px;justify-content:flex-end}
+.warning-banner{background:#fff4e6;border:1px solid #f5b041;color:#7d4d00;padding:12px 14px;border-radius:6px;margin-bottom:12px;font-size:13px;line-height:1.7}
+.warning-banner strong{color:#c0392b}
+.warning-banner ul{margin:6px 0 0 18px;padding:0}
+.warning-banner li{margin-bottom:2px}
+.risk-badge{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600;margin-left:6px;vertical-align:middle}
+.risk-high{background:#fadbd8;color:#a93226}
+.risk-medium{background:#fdebd0;color:#9c640c}
+</style>
+</head>
+<body>
+<header>wos-fetch &nbsp;&mdash;&nbsp; 文献获取工具</header>
+<div class="container">
+
+<!-- LLM 配置 -->
+<div class="card" id="cfgCard">
+  <div class="card-header" onclick="toggleCard('cfgCard')">LLM 配置 <span id="cfgArrow">▾</span></div>
+  <div class="card-body" id="cfgCardBody">
+    <div class="row">
+      <div class="fgroup">
+        <label>API Base URL</label>
+        <input type="text" id="baseUrl" value="https://api.openai.com/v1">
+      </div>
+      <div class="fgroup">
+        <label>API Key</label>
+        <input type="password" id="apiKey" placeholder="sk-...">
+      </div>
+    </div>
+    <div class="row">
+      <div class="fgroup">
+        <label>Model</label>
+        <input type="text" id="model" value="gpt-4o-mini">
+      </div>
+      <div class="fgroup">
+        <label>Timeout（秒）</label>
+        <input type="number" id="timeout" value="120" min="30" max="600">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AI 检索式生成 -->
+<div class="card" id="queryCard">
+  <div class="card-header" onclick="toggleCard('queryCard')">AI 检索式生成（可选）<span id="queryCardArrow">▾</span></div>
+  <div class="card-body" id="queryCardBody">
+    <div class="fgroup">
+      <label>研究主题描述（中文，详细描述研究范围、关键词、时间范围、排除条件等）</label>
+      <textarea id="topic" rows="4" placeholder="例如：近五年基于深度学习的医学影像分割方法综述，包括卷积神经网络和Transformer架构，排除纯综述文章..."></textarea>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <div class="fgroup">
+        <label>检索方向数量（生成完整规划时）</label>
+        <select id="directionCount">
+          <option value="auto">自动（根据主题宽窄）</option>
+          <option value="3">3 条</option>
+          <option value="5">5 条</option>
+          <option value="7">7 条</option>
+          <option value="10">10 条</option>
+        </select>
+      </div>
+      <div style="padding-top:18px;display:flex;gap:8px;align-items:flex-start">
+        <button class="btn-secondary btn-sm" onclick="generateQuery()" id="btnGenQuery">生成单条检索式</button>
+        <button class="btn-purple btn-sm" onclick="generatePlan()" id="btnGenPlan">生成完整检索规划</button>
+      </div>
+    </div>
+    <div id="queryGenStatus"></div>
+
+    <div id="singleQueryResult" style="display:none">
+      <div class="fgroup">
+        <label>生成的检索式（可直接编辑）</label>
+        <textarea id="generatedQuery" rows="3"></textarea>
+      </div>
+      <button class="btn-sm btn-primary" onclick="useGeneratedQuery()">填入检索框</button>
+    </div>
+
+    <div id="planResult" style="display:none">
+      <hr>
+      <div style="font-weight:600;color:#444;margin-bottom:8px;font-size:13px">检索规划结果 <span id="planDirCount"></span></div>
+      <div id="planMeta" style="font-size:12px;color:#555;margin-bottom:10px;line-height:1.6"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn-primary btn-sm" onclick="runPlanSearchAll()" id="btnPlanSearchAll">全部检索</button>
+      </div>
+      <div id="planDirections"></div>
+      <div class="hint">点击检索式可将其填入下方 WoS 检索框</div>
+    </div>
+  </div>
+</div>
+
+<!-- 输入来源 -->
+<div class="card">
+  <div class="card-header">输入来源</div>
+  <div class="card-body">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('wos')">WoS 自动搜索</div>
+      <div class="tab" onclick="switchTab('upload')">上传文件</div>
+    </div>
+
+    <!-- WoS panel -->
+    <div class="panel active" id="panelWos">
+      <div class="row">
+        <div class="fgroup">
+          <label>WoS 检索式（Advanced Search 语法）</label>
+          <textarea id="wosQuery" placeholder="TS=(machine learning AND review) AND PY=(2019-2024)" rows="3"></textarea>
+        </div>
+        <div>
+          <div class="fgroup">
+            <label>浏览器调试端口</label>
+            <input type="number" id="debugPort" value="9222" min="1024" max="65535">
+          </div>
+          <div class="fgroup">
+            <label>最多抓取页数</label>
+            <input type="number" id="maxPages" value="5" min="1" max="50">
+          </div>
+          <div class="fgroup">
+            <label>每页最长等待（秒）</label>
+            <input type="number" id="pageWait" value="20" min="5" max="120">
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-secondary btn-sm" onclick="checkTargets()">检测浏览器</button>
+        <button class="btn-secondary btn-sm" onclick="launchBrowser()">启动浏览器</button>
+        <button class="btn-primary" onclick="doWosSearch()" id="btnWosSearch">搜索并抓取</button>
+      </div>
+      <div id="wosStatus"></div>
+    </div>
+
+    <!-- Upload panel -->
+    <div class="panel" id="panelUpload">
+      <div class="fgroup">
+        <label>选择文件（CSV / Excel / ZIP）</label>
+        <input type="file" id="uploadFile" accept=".csv,.xlsx,.xls,.zip">
+      </div>
+      <button class="btn-primary btn-sm" onclick="doUpload()" id="btnUpload">上传</button>
+      <div id="uploadStatus"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 1：相关性筛选 -->
+<div class="card">
+  <div class="card-header step">第一步：相关性筛选 <span class="step-label">必须步骤，LLM 自动评分</span></div>
+  <div class="card-body">
+    <div class="row" style="margin-bottom:12px">
+      <div class="fgroup">
+        <label>批次大小</label>
+        <input type="number" id="batchSize" value="12" min="1" max="20">
+      </div>
+      <div class="fgroup" style="padding-top:18px">
+        <div id="sessionBadge" style="margin-bottom:6px"></div>
+        <div class="hint">数据就绪后按钮自动启用</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:4px">
+      <button class="btn-success" onclick="runScreening()" id="btnScreening" disabled>运行相关性筛选</button>
+      <button class="btn-secondary btn-sm" onclick="skipScreening()" id="btnSkipScreen" disabled>跳过筛选，直接获取全文</button>
+      <span class="hint">已完成筛选的文件可跳过此步骤</span>
+    </div>
+    <div id="step1Status"></div>
+    <div class="log" id="log1" style="display:none"></div>
+    <div id="screenedBadge" style="margin-top:10px"></div>
+  </div>
+</div>
+
+<!-- Step 2：获取全文 -->
+<div class="card" id="step2Card" style="display:none">
+  <div class="card-header step2">第二步：获取全文 <span class="step-label">筛选完成后可执行</span></div>
+  <div class="card-body">
+    <div class="warning-banner">
+      <strong>⚠ 抓取前必看：</strong>批量直接 HTTP 抓取出版商网站有明确风险。已有用户因为抓取速度过快被 Elsevier、Wiley 等查到，<strong>导致整个学校的机构 IP 被封禁</strong>，影响所有师生正常访问。
+      <ul>
+        <li>经验值：<strong>单次 &lt; 200 篇基本安全</strong>；超过 200 篇请分批跑，并在批次之间留几分钟间隔</li>
+        <li>并发数保持 <strong>1–2</strong>，不要图快调到 5+；后端已自动给每个域名加 1 秒最小间隔，但并发越高仍越容易触发风控</li>
+        <li>同一批次篇数较多时，建议勾选下方「浏览器 fallback」走已登录会话，比裸 HTTP 更安全</li>
+        <li>如下方提示中出现 <span class="risk-badge risk-high">高风险</span> 出版商，强烈建议先在登录浏览器里完成 SSO，再开启浏览器 fallback 模式</li>
+        <li>请遵守出版商服务条款与所在机构的网络使用政策；本工具不提供绕过权限的能力</li>
+      </ul>
+    </div>
+    <div class="row" style="margin-bottom:12px">
+      <div class="fgroup">
+        <label>并发数（同时获取文章数）</label>
+        <input type="number" id="fulltextWorkers" value="2" min="1" max="10">
+      </div>
+      <div class="fgroup">
+        <label>浏览器等待时间（秒，启用 fallback 时）</label>
+        <input type="number" id="browserWait" value="25" min="5" max="120">
+      </div>
+    </div>
+    <div class="fgroup" style="margin-bottom:12px">
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="useBrowser"> 使用浏览器 fallback 抓取
+      </label>
+      <div class="hint" style="margin-top:4px">勾选后 HTTP 失败时自动用浏览器重试（需已启动）；浏览器模式建议并发数设为 1-2</div>
+    </div>
+    <button class="btn-success" onclick="runFulltext()" id="btnFulltext">开始获取全文</button>
+    <div id="step2Status"></div>
+    <div class="log" id="log2" style="display:none"></div>
+    <div style="margin-top:12px">
+      <button class="btn-primary" onclick="downloadResult()" id="btnDownload" style="display:none">下载结果 ZIP</button>
+    </div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<div class="modal-overlay" id="loginModal">
+  <div class="modal-box">
+    <div class="modal-title">请先登录出版商网站</div>
+    <p class="modal-desc">检测到以下出版商的文章，请在浏览器中打开并登录（机构网络或账号登录均可），完成后点击「确认已登录，开始获取」。</p>
+    <div id="loginModalRiskHint" class="warning-banner" style="display:none">
+      <strong>⚠ 检测到「高风险」出版商：</strong>这类站点对高频抓取识别极敏感（已有真实案例：学校 IP 因批量抓取 Elsevier 被全段封禁）。请务必：
+      <ul>
+        <li>勾选下方「使用浏览器 fallback」走已登录会话</li>
+        <li>并发数压到 1，不要并行</li>
+        <li>每批次 <strong>&lt; 200 篇</strong>，超量请分批，批与批之间间隔几分钟</li>
+      </ul>
+    </div>
+    <div id="publisherList"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeLoginModal()">取消</button>
+      <button class="btn-success" onclick="proceedFetch()">确认已登录，开始获取</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentSessionId = null;
+let screenedSessionId = null;
+let fulltextTaskId = null;
+let currentPlan = null;
+let planSearchRunning = false;
+
+function toggleCard(id){
+  const body = document.getElementById(id+'Body');
+  const arrow = document.getElementById(id+'Arrow');
+  if(!body) return;
+  const hidden = body.style.display === 'none';
+  body.style.display = hidden ? '' : 'none';
+  if(arrow) arrow.textContent = hidden ? '▾' : '▸';
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach((el,i) =>
+    el.classList.toggle('active',(tab==='wos'&&i===0)||(tab==='upload'&&i===1)));
+  document.getElementById('panelWos').classList.toggle('active', tab==='wos');
+  document.getElementById('panelUpload').classList.toggle('active', tab==='upload');
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"'`]/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'
+  }[ch]));
+}
+
+function setStatus(id, msg, type, withSpinner){
+  const el = document.getElementById(id);
+  if(!el) return;
+  // Build via DOM to avoid HTML injection from server / LLM error messages.
+  while(el.firstChild) el.removeChild(el.firstChild);
+  if(withSpinner){
+    const sp = document.createElement('span');
+    sp.className = 'spinner';
+    el.appendChild(sp);
+  }
+  el.appendChild(document.createTextNode(String(msg == null ? '' : msg)));
+  el.className = 'status-bar status-'+type;
+  el.style.display = msg ? '' : 'none';
+}
+
+function appendLog(logId, msg, type){
+  const box = document.getElementById(logId);
+  if(!box) return;
+  box.style.display = '';
+  const line = document.createElement('div');
+  line.textContent = msg;
+  if(type === 'err') line.className = 'log-line-err';
+  else if(type === 'done') line.className = 'log-line-done';
+  else if(type === 'warn' || String(msg).startsWith('[!! 警告]')) line.className = 'log-line-warn';
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setSession(id, label){
+  currentSessionId = id;
+  screenedSessionId = null;
+  document.getElementById('sessionBadge').innerHTML =
+    `<span class="badge badge-ok">✓ ${label}</span>`;
+  document.getElementById('screenedBadge').innerHTML = '';
+  document.getElementById('step2Card').style.display = 'none';
+  document.getElementById('btnScreening').disabled = false;
+  document.getElementById('btnSkipScreen').disabled = false;
+}
+
+function skipScreening(){
+  if(!currentSessionId){alert('请先完成数据输入');return;}
+  screenedSessionId = currentSessionId;
+  document.getElementById('screenedBadge').innerHTML =
+    '<span class="badge badge-blue">已跳过筛选，使用全部记录</span>';
+  document.getElementById('step2Card').style.display = '';
+  setStatus('step1Status','已跳过筛选，可直接在第二步获取全文','ok');
+}
+
+function getLlmConfig(){
+  return {
+    model: document.getElementById('model').value.trim(),
+    base_url: document.getElementById('baseUrl').value.trim(),
+    api_key: document.getElementById('apiKey').value.trim(),
+    timeout: +document.getElementById('timeout').value,
+  };
+}
+
+// ── 检索式生成 ────────────────────────────────────────────────────────────
+
+async function generateQuery(){
+  const topic = document.getElementById('topic').value.trim();
+  if(!topic){alert('请先填写研究主题');return;}
+  const cfg = getLlmConfig();
+  if(!cfg.api_key||!cfg.model){alert('请先配置 API Key 和 Model');return;}
+  document.getElementById('btnGenQuery').disabled = true;
+  document.getElementById('singleQueryResult').style.display = 'none';
+  setStatus('queryGenStatus','正在生成检索式...','info',true);
+  try{
+    const resp = await fetch('/api/generate-query',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({topic,...cfg})});
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.detail||'生成失败');
+    document.getElementById('generatedQuery').value = data.query;
+    document.getElementById('singleQueryResult').style.display = '';
+    setStatus('queryGenStatus','检索式生成成功，可编辑后点击「填入检索框」','ok');
+  }catch(e){setStatus('queryGenStatus',e.message,'err');}
+  document.getElementById('btnGenQuery').disabled = false;
+}
+
+async function generatePlan(){
+  const topic = document.getElementById('topic').value.trim();
+  if(!topic){alert('请先填写研究主题');return;}
+  const cfg = getLlmConfig();
+  if(!cfg.api_key||!cfg.model){alert('请先配置 API Key 和 Model');return;}
+  document.getElementById('btnGenPlan').disabled = true;
+  document.getElementById('planResult').style.display = 'none';
+  setStatus('queryGenStatus','正在生成完整检索规划（可能需要30-60秒）...','info',true);
+  try{
+    const resp = await fetch('/api/generate-plan',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({topic,direction_count:document.getElementById('directionCount').value,
+        ...cfg,timeout:Math.max(cfg.timeout,180)})});
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.detail||'规划生成失败');
+    renderPlan(data);
+    setStatus('queryGenStatus',`规划生成成功，共 ${data.search_directions.length} 个检索方向`,'ok');
+  }catch(e){setStatus('queryGenStatus',e.message,'err');}
+  document.getElementById('btnGenPlan').disabled = false;
+}
+
+function renderPlan(plan){
+  currentPlan = {
+    ...plan,
+    search_directions: (plan.search_directions || []).map(item => ({...item, run_status:'pending', row_count:0, added_count:0, source_row_count:0}))
+  };
+  updatePlanActionState();
+  const dirs = currentPlan.search_directions||[];
+  document.getElementById('planDirCount').textContent = `（${dirs.length} 个方向）`;
+  const meta = [];
+  if(plan.normalized_topic) meta.push(`主题：${plan.normalized_topic}`);
+  if(plan.inferred_domain) meta.push(`领域：${plan.inferred_domain}`);
+  if(plan.review_objective) meta.push(`目标：${plan.review_objective}`);
+  document.getElementById('planMeta').textContent = meta.join('　|　');
+  const container = document.getElementById('planDirections');
+  container.innerHTML = '';
+  dirs.forEach((d,i)=>{
+    const div = document.createElement('div');
+    div.className = 'dir-card';
+    div.innerHTML = `
+      <div class="dir-card-head">
+        <div class="dir-card-title">${escapeHtml(d.direction_index||i+1)}. ${escapeHtml(d.direction_name||'')}</div>
+        <div class="${getDirStatusClass(d.run_status)}" id="dirStatus-${i}">${getDirStatusText(d.run_status,d)}</div>
+      </div>
+      ${d.purpose?`<div class="dir-card-meta" style="margin-bottom:4px">${escapeHtml(d.purpose)}</div>`:''}
+      <div class="dir-card-query" title="点击填入检索框" onclick="fillQuery(this.textContent.trim())">${escapeHtml(d.search_query)}</div>
+      <div class="dir-card-meta">
+        ${d.suggested_section?`章节：${escapeHtml(d.suggested_section)}　`:''}
+        ${d.expected_records?`预期记录数：${escapeHtml(d.expected_records)}`:''}
+      </div>`;
+    container.appendChild(div);
+  });
+  document.getElementById('planResult').style.display = '';
+}
+
+function fillQuery(query){
+  document.getElementById('wosQuery').value = query;
+  switchTab('wos');
+  document.getElementById('wosQuery').focus();
+  setStatus('wosStatus','检索式已填入，可直接点击「搜索并抓取」','ok');
+}
+
+function useGeneratedQuery(){
+  const q = document.getElementById('generatedQuery').value.trim();
+  if(q) fillQuery(q);
+}
+
+function getDirStatusText(status, item){
+  if(status === 'running') return '检索中';
+  if(status === 'ok') return `完成 +${item.added_count || item.row_count || 0}`;
+  if(status === 'err') return '失败';
+  return '待执行';
+}
+
+function getDirStatusClass(status){
+  if(status === 'running') return 'dir-status dir-status-running';
+  if(status === 'ok') return 'dir-status dir-status-ok';
+  if(status === 'err') return 'dir-status dir-status-err';
+  return 'dir-status dir-status-pending';
+}
+
+function updatePlanActionState(){
+  const btn = document.getElementById('btnPlanSearchAll');
+  if(btn) btn.disabled = planSearchRunning || !(currentPlan && (currentPlan.search_directions || []).length);
+}
+
+function updatePlanDirectionStatus(index, status, extra = {}){
+  if(!currentPlan || !currentPlan.search_directions || !currentPlan.search_directions[index]) return;
+  Object.assign(currentPlan.search_directions[index], extra, { run_status: status });
+  const el = document.getElementById(`dirStatus-${index}`);
+  if(el){
+    el.className = getDirStatusClass(status);
+    el.textContent = getDirStatusText(status, currentPlan.search_directions[index]);
+  }
+}
+
+async function startWosSearchTask(query, appendSessionId){
+  const port = +document.getElementById('debugPort').value;
+  const maxPages = +document.getElementById('maxPages').value;
+  const pageWait = +document.getElementById('pageWait').value;
+  const resp = await fetch('/api/wos/search',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({query,debug_port:port,max_pages:maxPages,page_wait_seconds:pageWait,append_session_id:appendSessionId || ''})});
+  const data = await resp.json();
+  if(!resp.ok) throw new Error(data.detail || '启动失败');
+  if(!data.task_id) throw new Error('启动失败');
+  return data.task_id;
+}
+
+async function waitWosSearchTask(taskId, onProgress){
+  return await new Promise((resolve, reject) => {
+    const es = new EventSource(`/api/progress/${taskId}`);
+    es.onmessage = e => {
+      const msg = e.data;
+      if(msg === '[DONE]'){
+        es.close();
+        fetch(`/api/task/${taskId}`).then(r => r.json()).then(resolve).catch(reject);
+      }else if(msg.startsWith('[ERROR]')){
+        es.close();
+        reject(new Error(msg.slice(7)));
+      }else if(onProgress){
+        onProgress(msg);
+      }
+    };
+    es.onerror = () => {
+      es.close();
+      reject(new Error('连接中断'));
+    };
+  });
+}
+
+async function runPlanSearchAll(){
+  if(planSearchRunning) return;
+  if(!currentPlan || !currentPlan.search_directions || !currentPlan.search_directions.length){
+    alert('请先生成完整检索规划');
+    return;
+  }
+  planSearchRunning = true;
+  updatePlanActionState();
+  document.getElementById('btnWosSearch').disabled = true;
+  switchTab('wos');
+  let mergedSessionId = '';
+  try{
+    for(let i = 0; i < currentPlan.search_directions.length; i++){
+      const item = currentPlan.search_directions[i];
+      const query = String(item.search_query || '').trim();
+      if(!query){
+        updatePlanDirectionStatus(i,'err');
+        throw new Error(`第 ${i + 1} 条检索方向缺少检索式`);
+      }
+      document.getElementById('wosQuery').value = query;
+      updatePlanDirectionStatus(i,'running');
+      setStatus('wosStatus',`正在执行第 ${i + 1}/${currentPlan.search_directions.length} 条检索方向...`,'info',true);
+      const taskId = await startWosSearchTask(query, mergedSessionId);
+      const task = await waitWosSearchTask(taskId, msg => setStatus('wosStatus', msg, 'info'));
+      mergedSessionId = task.wos_session_id || mergedSessionId;
+      updatePlanDirectionStatus(i,'ok',{
+        row_count: task.row_count || 0,
+        added_count: task.added_count || task.row_count || 0,
+        source_row_count: task.source_row_count || 0,
+      });
+    }
+    if(mergedSessionId){
+      const total = currentPlan.search_directions.reduce((sum, item) => sum + (item.added_count || 0), 0);
+      setSession(mergedSessionId, `WoS 合并 ${total} 条`);
+      setStatus('wosStatus','全部检索完成，已合并为同一批结果，可继续执行第一步筛选','ok');
+    }
+  }catch(e){
+    setStatus('wosStatus',e.message || '批量检索失败','err');
+  }finally{
+    planSearchRunning = false;
+    updatePlanActionState();
+    document.getElementById('btnWosSearch').disabled = false;
+  }
+}
+
+// ── WoS 搜索 ──────────────────────────────────────────────────────────────
+
+async function checkTargets(){
+  const port = +document.getElementById('debugPort').value;
+  const resp = await fetch('/api/wos/targets',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({debug_port:port})});
+  const data = await resp.json();
+  if(data.ok && data.targets.length>0){
+    setStatus('wosStatus',`检测到 ${data.targets.length} 个标签：${data.targets.slice(0,3).map(t=>t.title||t.url).join(' | ')}`,'ok');
+  }else{
+    setStatus('wosStatus',`未检测到浏览器（端口 ${port}）。${data.error||'请先启动浏览器。'}`,'err');
+  }
+}
+
+async function launchBrowser(){
+  const port = +document.getElementById('debugPort').value;
+  setStatus('wosStatus','正在启动浏览器...','info');
+  const resp = await fetch('/api/wos/launch',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({debug_port:port})});
+  const data = await resp.json();
+  if(data.task_id)
+    watchTask(data.task_id,'wosStatus',()=>setStatus('wosStatus','浏览器已就绪，请登录 WoS 后再搜索。','ok'));
+}
+
+function watchTask(taskId, statusId, onDone){
+  const es = new EventSource(`/api/progress/${taskId}`);
+  es.onmessage = e => {
+    const msg = e.data;
+    if(msg==='[DONE]'){es.close();if(onDone)onDone();}
+    else if(msg.startsWith('[ERROR]')){es.close();setStatus(statusId,msg.slice(7),'err');}
+    else setStatus(statusId,msg,'info');
+  };
+  es.onerror = ()=>{es.close();setStatus(statusId,'SSE 连接中断','err');};
+}
+
+async function doWosSearch(){
+  const query = document.getElementById('wosQuery').value.trim();
+  if(!query){alert('??? WoS ???');return;}
+  document.getElementById('btnWosSearch').disabled = true;
+  setStatus('wosStatus','??????????...','info');
+  try{
+    const taskId = await startWosSearchTask(query, '');
+    const task = await waitWosSearchTask(taskId, msg => setStatus('wosStatus', msg, 'info'));
+    if(task.wos_session_id){
+      setSession(task.wos_session_id, `WoS ${task.row_count} ?`);
+      setStatus('wosStatus',`???? ${task.row_count} ????????????`,'ok');
+    }
+  }catch(e){
+    setStatus('wosStatus',e.message || '????','err');
+  }finally{
+    document.getElementById('btnWosSearch').disabled = false;
+  }
+}
+
+// ── 文件上传 ──────────────────────────────────────────────────────────────
+
+async function doUpload(){
+  const fi = document.getElementById('uploadFile');
+  if(!fi.files.length){alert('请选择文件');return;}
+  document.getElementById('btnUpload').disabled = true;
+  setStatus('uploadStatus','上传中...','info');
+  const form = new FormData();
+  form.append('file',fi.files[0]);
+  try{
+    const resp = await fetch('/api/upload',{method:'POST',body:form});
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.detail||'上传失败');
+    setSession(data.session_id,`文件 ${data.row_count} 行`);
+    setStatus('uploadStatus',`上传成功：${data.row_count} 行，DOI ${data.doi_count} 条，请继续执行第一步筛选`,'ok');
+  }catch(e){setStatus('uploadStatus',e.message,'err');}
+  document.getElementById('btnUpload').disabled = false;
+}
+
+// ── Step 1：相关性筛选 ────────────────────────────────────────────────────
+
+async function runScreening(){
+  if(!currentSessionId){alert('请先完成数据输入');return;}
+  const cfg = getLlmConfig();
+  document.getElementById('btnScreening').disabled = true;
+  document.getElementById('screenedBadge').innerHTML = '';
+  document.getElementById('log1').innerHTML = '';
+  document.getElementById('log1').style.display = '';
+  setStatus('step1Status','正在启动相关性筛选...','info');
+
+  const body = {
+    session_id: currentSessionId,
+    ...cfg,
+    batch_size: +document.getElementById('batchSize').value,
+    topic: document.getElementById('topic').value.trim(),
+  };
+  const resp = await fetch('/api/run-screening',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data = await resp.json();
+  if(!data.task_id){
+    setStatus('step1Status','启动失败','err');
+    document.getElementById('btnScreening').disabled = false;
+    return;
+  }
+  const es = new EventSource(`/api/progress/${data.task_id}`);
+  es.onmessage = e => {
+    const msg = e.data;
+    if(msg==='[DONE]'){
+      es.close();
+      appendLog('log1','筛选完成','done');
+      fetch(`/api/task/${data.task_id}`).then(r=>r.json()).then(t=>{
+        if(t.screened_session_id){
+          screenedSessionId = t.screened_session_id;
+          document.getElementById('screenedBadge').innerHTML =
+            `<span class="badge badge-blue">筛选后剩余 ${t.row_count} 条</span>`;
+          setStatus('step1Status','筛选完成，请继续执行第二步获取全文','ok');
+          document.getElementById('step2Card').style.display = '';
+          document.getElementById('btnScreening').disabled = false;
+        }else if(t.status==='error'){
+          setStatus('step1Status',t.error||'筛选失败','err');
+          document.getElementById('btnScreening').disabled = false;
+        }
+      });
+    }else if(msg.startsWith('[ERROR]')){
+      es.close();
+      appendLog('log1',msg.slice(7),'err');
+      setStatus('step1Status',msg.slice(7),'err');
+      document.getElementById('btnScreening').disabled = false;
+    }else{
+      appendLog('log1',msg,'');
+      setStatus('step1Status',msg,'info');
+    }
+  };
+  es.onerror = ()=>{
+    es.close();
+    appendLog('log1','SSE 连接中断','err');
+    setStatus('step1Status','连接中断','err');
+    document.getElementById('btnScreening').disabled = false;
+  };
+}
+
+// ── Step 2：获取全文 ──────────────────────────────────────────────────────
+
+async function runFulltext(){
+  if(!screenedSessionId){alert('请先完成相关性筛选');return;}
+  document.getElementById('btnFulltext').disabled = true;
+  setStatus('step2Status','正在分析所需出版商...','info');
+  try{
+    const resp = await fetch('/api/run-fulltext/publishers',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:screenedSessionId})});
+    const data = await resp.json();
+    const publishers = data.publishers||[];
+    if(publishers.length > 0){
+      showLoginModal(publishers);
+      return;
+    }
+  }catch(e){}
+  _startFetch();
+}
+
+const PUBLISHER_RISK_HIGH = new Set([
+  'Elsevier (ScienceDirect)','Wiley Online Library','Springer','Taylor & Francis','SAGE Journals','Wolters Kluwer',
+]);
+const PUBLISHER_RISK_MEDIUM = new Set([
+  'ACS Publications','Royal Society of Chemistry','IEEE Xplore','ACM Digital Library','Oxford University Press',
+  'Cambridge University Press','Nature Portfolio','American Physical Society','American Physiological Society',
+  'American Society for Microbiology','BMJ','JAMA Network','New England Journal of Medicine','Science (AAAS)',
+]);
+
+function publisherRiskBadge(name){
+  if(PUBLISHER_RISK_HIGH.has(name)){
+    const b = document.createElement('span');
+    b.className = 'risk-badge risk-high';
+    b.textContent = '高风险';
+    return b;
+  }
+  if(PUBLISHER_RISK_MEDIUM.has(name)){
+    const b = document.createElement('span');
+    b.className = 'risk-badge risk-medium';
+    b.textContent = '中风险';
+    return b;
+  }
+  return null;
+}
+
+function showLoginModal(publishers){
+  const port = +document.getElementById('debugPort').value;
+  const list = document.getElementById('publisherList');
+  list.innerHTML = '';
+  let hasHighRisk = false;
+  publishers.forEach(p => {
+    const item = document.createElement('div');
+    item.className = 'publisher-item';
+    const left = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'publisher-name';
+    name.appendChild(document.createTextNode(String(p.name || '') + ' '));
+    const count = document.createElement('span');
+    count.className = 'publisher-count';
+    count.textContent = '（' + String(p.count || 0) + ' 篇）';
+    name.appendChild(count);
+    const badge = publisherRiskBadge(String(p.name || ''));
+    if(badge){
+      name.appendChild(badge);
+      if(PUBLISHER_RISK_HIGH.has(String(p.name || ''))) hasHighRisk = true;
+    }
+    left.appendChild(name);
+    item.appendChild(left);
+    const btn = document.createElement('button');
+    btn.className = 'btn-primary btn-sm';
+    btn.style.cssText = 'white-space:nowrap;margin-left:12px';
+    btn.textContent = '在调试浏览器中打开 ↗';
+    btn.addEventListener('click', () => openInBrowser(String(p.url || ''), port));
+    item.appendChild(btn);
+    list.appendChild(item);
+  });
+  const hint = document.getElementById('loginModalRiskHint');
+  if(hint){
+    hint.style.display = hasHighRisk ? '' : 'none';
+  }
+  document.getElementById('loginModal').classList.add('active');
+  setStatus('step2Status','请先登录出版商网站，完成后点击确认','info');
+}
+
+async function openInBrowser(url, port){
+  try{
+    const resp = await fetch('/api/browser/open',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url, debug_port: port})});
+    const data = await resp.json();
+    if(!data.ok) alert('无法在调试浏览器中打开：' + (data.error||'未知错误'));
+  }catch(e){ alert('请求失败：'+e.message); }
+}
+
+function closeLoginModal(){
+  document.getElementById('loginModal').classList.remove('active');
+  document.getElementById('btnFulltext').disabled = false;
+  setStatus('step2Status','','info');
+}
+
+function proceedFetch(){
+  document.getElementById('loginModal').classList.remove('active');
+  _startFetch();
+}
+
+async function _startFetch(){
+  document.getElementById('btnDownload').style.display = 'none';
+  document.getElementById('log2').innerHTML = '';
+  document.getElementById('log2').style.display = '';
+  setStatus('step2Status','正在启动全文获取...','info');
+
+  const port = +document.getElementById('debugPort').value;
+  const body = {
+    session_id: screenedSessionId,
+    timeout: +document.getElementById('timeout').value,
+    debug_port: port,
+    use_browser: document.getElementById('useBrowser').checked,
+    browser_wait_seconds: +document.getElementById('browserWait').value,
+    workers: +document.getElementById('fulltextWorkers').value,
+  };
+  const resp = await fetch('/api/run-fulltext',{method:'POST',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const data = await resp.json();
+  if(!data.task_id){
+    setStatus('step2Status','启动失败','err');
+    document.getElementById('btnFulltext').disabled = false;
+    return;
+  }
+  fulltextTaskId = data.task_id;
+  const es = new EventSource(`/api/progress/${data.task_id}`);
+  es.onmessage = e => {
+    const msg = e.data;
+    if(msg==='[DONE]'){
+      es.close();
+      appendLog('log2','全文获取完成','done');
+      setStatus('step2Status','全文获取完成，可下载结果','ok');
+      document.getElementById('btnDownload').style.display = '';
+      document.getElementById('btnFulltext').disabled = false;
+    }else if(msg.startsWith('[ERROR]')){
+      es.close();
+      appendLog('log2',msg.slice(7),'err');
+      setStatus('step2Status',msg.slice(7),'err');
+      document.getElementById('btnFulltext').disabled = false;
+    }else{
+      appendLog('log2',msg,'');
+      setStatus('step2Status',msg,'info');
+    }
+  };
+  es.onerror = ()=>{
+    es.close();
+    appendLog('log2','SSE 连接中断','err');
+    setStatus('step2Status','连接中断','err');
+    document.getElementById('btnFulltext').disabled = false;
+  };
+}
+
+function downloadResult(){
+  if(fulltextTaskId) window.location.href = '/api/download/' + fulltextTaskId;
+}
+</script>
+</body>
+</html>
