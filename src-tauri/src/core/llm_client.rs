@@ -57,7 +57,10 @@ pub fn build_responses_url(base_url: &str) -> String {
 }
 
 pub fn prefers_responses_api(base_url: &str) -> bool {
-    base_url.trim().trim_end_matches('/').ends_with("/responses")
+    base_url
+        .trim()
+        .trim_end_matches('/')
+        .ends_with("/responses")
 }
 
 /// Walk a JSON tree looking for text fragments under `text`, `output_text`,
@@ -129,7 +132,11 @@ pub fn extract_output_text(payload: &Value) -> String {
 pub fn extract_response_error(payload: &Value) -> String {
     if let Some(error) = payload.get("error") {
         if let Some(obj) = error.as_object() {
-            let message = obj.get("message").and_then(Value::as_str).unwrap_or("").trim();
+            let message = obj
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
             let code = obj.get("code").and_then(Value::as_str).unwrap_or("").trim();
             return if !code.is_empty() && !message.is_empty() {
                 format!("{code}: {message}")
@@ -218,10 +225,9 @@ where
             }
         }
     }
-    Err(AppError::Llm(
-        last_err
-            .unwrap_or_else(|| "Exhausted retry attempts without obtaining a response.".into()),
-    ))
+    Err(AppError::Llm(last_err.unwrap_or_else(|| {
+        "Exhausted retry attempts without obtaining a response.".into()
+    })))
 }
 
 fn build_client(timeout_seconds: u64) -> AppResult<Client> {
@@ -232,10 +238,7 @@ fn build_client(timeout_seconds: u64) -> AppResult<Client> {
         .map_err(AppError::from)
 }
 
-async fn post_chat_completion(
-    config: &LlmConfig,
-    messages: &[ChatMessage],
-) -> AppResult<Value> {
+async fn post_chat_completion(config: &LlmConfig, messages: &[ChatMessage]) -> AppResult<Value> {
     let url = build_chat_completions_url(&config.base_url);
     let temperature = config.temperature.unwrap_or(0.0);
     let body = json!({
@@ -262,8 +265,9 @@ async fn post_chat_completion(
         status,
         started.elapsed().as_secs_f64()
     );
-    let data: Value = serde_json::from_str(&text)
-        .unwrap_or_else(|_| json!({ "error": { "message": text.chars().take(1000).collect::<String>() } }));
+    let data: Value = serde_json::from_str(&text).unwrap_or_else(
+        |_| json!({ "error": { "message": text.chars().take(1000).collect::<String>() } }),
+    );
     if status.as_u16() >= 400 {
         let detail = extract_response_error(&data);
         return Err(AppError::Llm(if detail.is_empty() {
@@ -279,10 +283,7 @@ async fn post_chat_completion(
     Ok(data)
 }
 
-async fn post_response_api(
-    config: &LlmConfig,
-    messages: &[ChatMessage],
-) -> AppResult<Value> {
+async fn post_response_api(config: &LlmConfig, messages: &[ChatMessage]) -> AppResult<Value> {
     let url = build_responses_url(&config.base_url);
     let temperature = config.temperature.unwrap_or(0.0);
     let input_items: Vec<Value> = messages
@@ -314,8 +315,9 @@ async fn post_response_api(
         status,
         started.elapsed().as_secs_f64()
     );
-    let data: Value = serde_json::from_str(&text)
-        .unwrap_or_else(|_| json!({ "error": { "message": text.chars().take(1000).collect::<String>() } }));
+    let data: Value = serde_json::from_str(&text).unwrap_or_else(
+        |_| json!({ "error": { "message": text.chars().take(1000).collect::<String>() } }),
+    );
     if status.as_u16() >= 400 {
         let detail = extract_response_error(&data);
         return Err(AppError::Llm(if detail.is_empty() {
@@ -360,7 +362,11 @@ async fn stream_chat_completion_text(
         let parsed: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
         let detail = extract_response_error(&parsed);
         return Err(AppError::Llm(if detail.is_empty() {
-            format!("HTTP {} {}", status.as_u16(), body.chars().take(1000).collect::<String>())
+            format!(
+                "HTTP {} {}",
+                status.as_u16(),
+                body.chars().take(1000).collect::<String>()
+            )
         } else {
             detail
         }));
@@ -373,7 +379,9 @@ async fn stream_chat_completion_text(
         let bytes = item?;
         buffer.extend_from_slice(&bytes);
         loop {
-            let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') else { break };
+            let Some(newline_pos) = buffer.iter().position(|&b| b == b'\n') else {
+                break;
+            };
             let raw_line: Vec<u8> = buffer.drain(..=newline_pos).collect();
             let line = String::from_utf8_lossy(&raw_line).trim().to_string();
             if line.is_empty() {
@@ -391,7 +399,9 @@ async fn stream_chat_completion_text(
             if !detail.is_empty() {
                 return Err(AppError::Llm(detail));
             }
-            let Some(choices) = data.get("choices").and_then(Value::as_array) else { continue };
+            let Some(choices) = data.get("choices").and_then(Value::as_array) else {
+                continue;
+            };
             for choice in choices {
                 if let Some(content) = choice.pointer("/delta/content").and_then(Value::as_str) {
                     chunks.push(content.to_string());
@@ -474,7 +484,13 @@ pub async fn chat_text(config: &LlmConfig, messages: &[ChatMessage]) -> AppResul
 
     Err(AppError::Llm(format!(
         "Model API call failed. {}",
-        errors.iter().rev().take(3).cloned().collect::<Vec<_>>().join(" | ")
+        errors
+            .iter()
+            .rev()
+            .take(3)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ")
     )))
 }
 

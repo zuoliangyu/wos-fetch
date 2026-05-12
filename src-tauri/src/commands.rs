@@ -268,7 +268,12 @@ fn doi_count(table: &Table) -> usize {
 }
 
 fn rows_as_objects(table: &Table) -> Vec<Map<String, Value>> {
-    table.rows.iter().cloned().map(serde_json::Map::from_iter).collect()
+    table
+        .rows
+        .iter()
+        .cloned()
+        .map(serde_json::Map::from_iter)
+        .collect()
 }
 
 fn objects_to_table(records: Vec<Map<String, Value>>) -> Table {
@@ -319,9 +324,7 @@ pub async fn upload_file(
 
 /// List the browser's current debug targets (page-type only).
 #[tauri::command]
-pub async fn wos_targets(
-    body: Option<HashMap<String, Value>>,
-) -> Result<Vec<DebugTarget>, String> {
+pub async fn wos_targets(body: Option<HashMap<String, Value>>) -> Result<Vec<DebugTarget>, String> {
     let port = body
         .as_ref()
         .and_then(|b| b.get("debug_port"))
@@ -351,11 +354,26 @@ pub async fn wos_launch(
     let task_id = new_task(&state_clone);
     let task_id_for_spawn = task_id.clone();
     tokio::spawn(async move {
-        push_progress(&app, &task_id_for_spawn, format!("尝试连接或启动浏览器（端口 {port}）..."));
+        push_progress(
+            &app,
+            &task_id_for_spawn,
+            format!("尝试连接或启动浏览器（端口 {port}）..."),
+        );
         match launch_wos_browser(None, None, None, port, 20.0).await {
             Ok(info) => {
-                push_progress(&app, &task_id_for_spawn, format!("浏览器已就绪：{}", info.browser_name));
-                finish_task(&app, &state_clone, &task_id_for_spawn, Vec::new(), "json", |_| {});
+                push_progress(
+                    &app,
+                    &task_id_for_spawn,
+                    format!("浏览器已就绪：{}", info.browser_name),
+                );
+                finish_task(
+                    &app,
+                    &state_clone,
+                    &task_id_for_spawn,
+                    Vec::new(),
+                    "json",
+                    |_| {},
+                );
             }
             Err(err) => fail_task(&app, &state_clone, &task_id_for_spawn, err.to_string()),
         }
@@ -414,7 +432,11 @@ pub async fn wos_search(
     let append_session = args.append_session_id;
 
     tokio::spawn(async move {
-        push_progress(&app, &task_id_for_spawn, format!("提交检索式到端口 {port}..."));
+        push_progress(
+            &app,
+            &task_id_for_spawn,
+            format!("提交检索式到端口 {port}..."),
+        );
         if let Err(err) = run_wos_search(port, &query, 30.0).await {
             fail_task(&app, &state_clone, &task_id_for_spawn, err.to_string());
             return;
@@ -435,7 +457,10 @@ pub async fn wos_search(
         push_progress(
             &app,
             &task_id_for_spawn,
-            format!("抓取完成：{} 页，共 {} 条记录", scrape.pages_scraped, record_count),
+            format!(
+                "抓取完成：{} 页，共 {} 条记录",
+                scrape.pages_scraped, record_count
+            ),
         );
         if scrape.records.is_empty() {
             fail_task(
@@ -477,12 +502,19 @@ pub async fn wos_search(
             &task_id_for_spawn,
             format!("[WOS_SESSION:{session_id}] {final_count} 条"),
         );
-        finish_task(&app, &state_clone, &task_id_for_spawn, Vec::new(), "wos", |task| {
-            task.wos_session_id = session_id;
-            task.row_count = final_count;
-            task.added_count = added_count;
-            task.source_row_count = source_row_count;
-        });
+        finish_task(
+            &app,
+            &state_clone,
+            &task_id_for_spawn,
+            Vec::new(),
+            "wos",
+            |task| {
+                task.wos_session_id = session_id;
+                task.row_count = final_count;
+                task.added_count = added_count;
+                task.source_row_count = source_row_count;
+            },
+        );
     });
     Ok(task_id)
 }
@@ -522,10 +554,18 @@ pub async fn run_screening(
 
     tokio::spawn(async move {
         let total = table.nrows();
-        push_progress(&app, &task_id_for_spawn, format!("开始相关性筛选，共 {total} 条记录..."));
+        push_progress(
+            &app,
+            &task_id_for_spawn,
+            format!("开始相关性筛选，共 {total} 条记录..."),
+        );
         let records = rows_as_objects(&table);
         if llm_config.model.trim().is_empty() || llm_config.api_key.trim().is_empty() {
-            push_progress(&app, &task_id_for_spawn, "未配置 LLM，跳过评分，保留全部记录");
+            push_progress(
+                &app,
+                &task_id_for_spawn,
+                "未配置 LLM，跳过评分，保留全部记录",
+            );
             let kept_table = objects_to_table(records);
             let session_id = store_session(&state_clone, kept_table.clone());
             let kept = kept_table.nrows();
@@ -534,10 +574,17 @@ pub async fn run_screening(
                 &task_id_for_spawn,
                 format!("[SCREENED_SESSION:{session_id}] {kept} 条"),
             );
-            finish_task(&app, &state_clone, &task_id_for_spawn, Vec::new(), "screening", |task| {
-                task.screened_session_id = session_id;
-                task.row_count = kept;
-            });
+            finish_task(
+                &app,
+                &state_clone,
+                &task_id_for_spawn,
+                Vec::new(),
+                "screening",
+                |task| {
+                    task.screened_session_id = session_id;
+                    task.row_count = kept;
+                },
+            );
             return;
         }
         let scored = match score_relevance(&records, &context, &llm_config, batch_size).await {
@@ -569,7 +616,12 @@ pub async fn run_screening(
             format!("筛选完成：保留 {kept} / {total}（排除 {excluded}）"),
         );
         if kept_records.is_empty() {
-            fail_task(&app, &state_clone, &task_id_for_spawn, "筛选后无剩余记录".to_string());
+            fail_task(
+                &app,
+                &state_clone,
+                &task_id_for_spawn,
+                "筛选后无剩余记录".to_string(),
+            );
             return;
         }
         let kept_table = objects_to_table(kept_records);
@@ -579,10 +631,17 @@ pub async fn run_screening(
             &task_id_for_spawn,
             format!("[SCREENED_SESSION:{session_id}] {kept} 条"),
         );
-        finish_task(&app, &state_clone, &task_id_for_spawn, Vec::new(), "screening", |task| {
-            task.screened_session_id = session_id;
-            task.row_count = kept;
-        });
+        finish_task(
+            &app,
+            &state_clone,
+            &task_id_for_spawn,
+            Vec::new(),
+            "screening",
+            |task| {
+                task.screened_session_id = session_id;
+                task.row_count = kept;
+            },
+        );
     });
     Ok(task_id)
 }
@@ -636,7 +695,9 @@ pub async fn run_fulltext_publishers(
         .into_iter()
         .find(|c| table.has_column(c));
     let Some(col) = doi_col else {
-        return Ok(PublishersResponse { publishers: Vec::new() });
+        return Ok(PublishersResponse {
+            publishers: Vec::new(),
+        });
     };
     let dois: Vec<String> = table
         .rows
@@ -646,7 +707,11 @@ pub async fn run_fulltext_publishers(
             Some(Value::Null) | None => None,
             Some(other) => {
                 let text = other.to_string();
-                if text.is_empty() { None } else { Some(text) }
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
             }
         })
         .collect();
@@ -697,7 +762,11 @@ pub async fn run_fulltext(
 
     tokio::spawn(async move {
         let total = table.nrows();
-        let mode = if args.use_browser { "HTTP + 浏览器 fallback" } else { "HTTP" };
+        let mode = if args.use_browser {
+            "HTTP + 浏览器 fallback"
+        } else {
+            "HTTP"
+        };
         push_progress(
             &app,
             &task_id_for_spawn,
@@ -719,7 +788,8 @@ pub async fn run_fulltext(
         }
 
         let semaphore = Arc::new(tokio::sync::Semaphore::new(workers));
-        let mut handles: Vec<tokio::task::JoinHandle<(usize, Map<String, Value>)>> = Vec::with_capacity(total);
+        let mut handles: Vec<tokio::task::JoinHandle<(usize, Map<String, Value>)>> =
+            Vec::with_capacity(total);
         for (idx, raw) in table.rows.iter().enumerate() {
             let mut record_map: Map<String, Value> =
                 raw.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
@@ -740,7 +810,10 @@ pub async fn run_fulltext(
             handles.push(tokio::spawn(async move {
                 let _permit = sem.acquire_owned().await.ok();
                 if doi.is_empty() {
-                    record_map.insert("acquisition_status".into(), Value::String("skipped_no_doi".into()));
+                    record_map.insert(
+                        "acquisition_status".into(),
+                        Value::String("skipped_no_doi".into()),
+                    );
                     push_progress(
                         &app_clone,
                         &task_id_for_inner,
@@ -759,7 +832,7 @@ pub async fn run_fulltext(
                 } else {
                     acquire_article_fulltext(&doi, timeout_seconds, HTML_MIN_CHARS).await
                 };
-                if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(&acq).map(|v| v) {
+                if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(&acq) {
                     for (k, v) in map {
                         record_map.insert(k, v);
                     }
@@ -778,7 +851,11 @@ pub async fn run_fulltext(
                 push_progress(
                     &app_clone,
                     &task_id_for_inner,
-                    format!("[{}/{total}] {} → {status} ({acq_type})", idx + 1, doi.chars().take(50).collect::<String>()),
+                    format!(
+                        "[{}/{total}] {} → {status} ({acq_type})",
+                        idx + 1,
+                        doi.chars().take(50).collect::<String>()
+                    ),
                 );
                 (idx, record_map)
             }));
@@ -813,9 +890,16 @@ pub async fn run_fulltext(
                         "全文获取完成：{ok_count}/{total} 成功，{count} 篇已保存全文，格式={fmt}"
                     ),
                 );
-                finish_task(&app, &state_clone, &task_id_for_spawn, bytes, &fmt, |task| {
-                    task.row_count = total;
-                });
+                finish_task(
+                    &app,
+                    &state_clone,
+                    &task_id_for_spawn,
+                    bytes,
+                    &fmt,
+                    |task| {
+                        task.row_count = total;
+                    },
+                );
             }
             Err(err) => {
                 fail_task(&app, &state_clone, &task_id_for_spawn, err.to_string());
@@ -858,7 +942,11 @@ pub fn task_export_meta(
     if task.result_bytes.is_empty() {
         return Err("结果未就绪".into());
     }
-    let ext = if task.result_format == "zip" { "zip" } else { "xlsx" };
+    let ext = if task.result_format == "zip" {
+        "zip"
+    } else {
+        "xlsx"
+    };
     Ok(TaskExportMeta {
         filename: format!("fetch_result.{ext}"),
         ext: ext.into(),
@@ -949,4 +1037,3 @@ pub async fn validate_llm(args: LlmConfigArg) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())
 }
-

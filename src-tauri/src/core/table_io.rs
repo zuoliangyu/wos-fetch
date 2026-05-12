@@ -29,8 +29,7 @@ pub const FULLTEXT_DIR: &str = "fulltext";
 
 static EXCEL_ILLEGAL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"[\x00-\x08\x0B-\x0C\x0E-\x1F]").unwrap());
-static FILENAME_SANITIZE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[^A-Za-z0-9._\-]+").unwrap());
+static FILENAME_SANITIZE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^A-Za-z0-9._\-]+").unwrap());
 static ALPHANUM_SPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-z0-9 ]+").unwrap());
 static WS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static MULTI_NEWLINE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\n{3,}").unwrap());
@@ -58,7 +57,12 @@ const SECTION_ALIASES: &[(&str, &[&str])] = &[
     ),
     (
         "references",
-        &["references", "bibliography", "literature cited", "works cited"],
+        &[
+            "references",
+            "bibliography",
+            "literature cited",
+            "works cited",
+        ],
     ),
 ];
 
@@ -207,8 +211,7 @@ fn parse_csv_text(text: &str) -> AppResult<Table> {
         .collect::<Vec<_>>();
     let mut rows: Vec<HashMap<String, Value>> = Vec::new();
     for record in reader.records() {
-        let record =
-            record.map_err(|e| AppError::BadInput(format!("CSV row parse error: {e}")))?;
+        let record = record.map_err(|e| AppError::BadInput(format!("CSV row parse error: {e}")))?;
         let mut row: HashMap<String, Value> = HashMap::new();
         for (i, value) in record.iter().enumerate() {
             if let Some(name) = headers.get(i) {
@@ -217,7 +220,10 @@ fn parse_csv_text(text: &str) -> AppResult<Table> {
         }
         rows.push(row);
     }
-    Ok(Table { columns: headers, rows })
+    Ok(Table {
+        columns: headers,
+        rows,
+    })
 }
 
 fn read_xlsx_bytes(bytes: &[u8]) -> AppResult<Table> {
@@ -233,7 +239,9 @@ fn read_xlsx_bytes(bytes: &[u8]) -> AppResult<Table> {
         .worksheet_range(&first_sheet)
         .map_err(|e| AppError::Excel(format!("Failed to read sheet '{first_sheet}': {e}")))?;
     let mut rows_iter = range.rows();
-    let header_row = rows_iter.next().ok_or_else(|| AppError::Excel("empty sheet".into()))?;
+    let header_row = rows_iter
+        .next()
+        .ok_or_else(|| AppError::Excel("empty sheet".into()))?;
     let headers: Vec<String> = header_row
         .iter()
         .enumerate()
@@ -256,7 +264,10 @@ fn read_xlsx_bytes(bytes: &[u8]) -> AppResult<Table> {
         }
         rows.push(map);
     }
-    Ok(Table { columns: headers, rows })
+    Ok(Table {
+        columns: headers,
+        rows,
+    })
 }
 
 fn data_cell_to_value(cell: &Data) -> Value {
@@ -302,7 +313,8 @@ pub fn read_zip_table(bytes: &[u8]) -> AppResult<Table> {
         .iter()
         .filter(|n| {
             let l = n.to_ascii_lowercase();
-            !n.ends_with('/') && (l.ends_with(".xlsx") || l.ends_with(".xls") || l.ends_with(".csv"))
+            !n.ends_with('/')
+                && (l.ends_with(".xlsx") || l.ends_with(".xls") || l.ends_with(".csv"))
         })
         .collect();
     if preferred.is_empty() {
@@ -383,7 +395,9 @@ pub fn flatten_json_column(table: &mut Table, column: &str) {
     // Backfill cells. For existing columns, only overwrite blanks.
     let column_set: Vec<String> = table.columns.clone();
     for row in &mut table.rows {
-        let Some(Value::Object(obj)) = row.get(column).cloned() else { continue };
+        let Some(Value::Object(obj)) = row.get(column).cloned() else {
+            continue;
+        };
         for (k, v) in obj {
             if column_set.contains(&k) {
                 let existing = row.get(&k).cloned();
@@ -400,30 +414,131 @@ pub fn flatten_json_column(table: &mut Table, column: &str) {
 pub fn prepare_export_table(table: &Table) -> Table {
     type AliasMap<'a> = &'a [(&'a str, &'a [&'a str])];
     let export_aliases: AliasMap = &[
-        ("Article Title", &["Article Title", "article_title", "title", "Document Title", "中文标题"]),
-        ("Authors", &["Authors", "authors", "Author Full Names", "Author(s)", "Byline", "basic_info_authors"]),
-        ("Source Title", &["Source Title", "source_title", "journal", "journal_title", "Publication Name", "Publication Title", "basic_info_journal"]),
+        (
+            "Article Title",
+            &[
+                "Article Title",
+                "article_title",
+                "title",
+                "Document Title",
+                "中文标题",
+            ],
+        ),
+        (
+            "Authors",
+            &[
+                "Authors",
+                "authors",
+                "Author Full Names",
+                "Author(s)",
+                "Byline",
+                "basic_info_authors",
+            ],
+        ),
+        (
+            "Source Title",
+            &[
+                "Source Title",
+                "source_title",
+                "journal",
+                "journal_title",
+                "Publication Name",
+                "Publication Title",
+                "basic_info_journal",
+            ],
+        ),
         ("DOI", &["doi_normalized", "DOI", "doi", "basic_info_doi"]),
-        ("Publication Year", &["Publication Year", "publication_year", "year", "published_year", "Pub Year", "PY", "basic_info_year"]),
+        (
+            "Publication Year",
+            &[
+                "Publication Year",
+                "publication_year",
+                "year",
+                "published_year",
+                "Pub Year",
+                "PY",
+                "basic_info_year",
+            ],
+        ),
         ("Volume", &["Volume", "volume", "Vol", "basic_info_volume"]),
-        ("Issue", &["Issue", "issue", "Number", "No", "basic_info_issue"]),
-        ("Pages", &["Pages", "pages", "Page Range", "page_range", "basic_info_pages"]),
-        ("Start Page", &["Start Page", "start_page", "Beginning Page", "BP"]),
+        (
+            "Issue",
+            &["Issue", "issue", "Number", "No", "basic_info_issue"],
+        ),
+        (
+            "Pages",
+            &[
+                "Pages",
+                "pages",
+                "Page Range",
+                "page_range",
+                "basic_info_pages",
+            ],
+        ),
+        (
+            "Start Page",
+            &["Start Page", "start_page", "Beginning Page", "BP"],
+        ),
         ("End Page", &["End Page", "end_page", "Ending Page", "EP"]),
-        ("Document Type", &["Document Type", "document_type", "record_type", "Publication Type", "basic_info_document_type"]),
-        ("Abstract", &["Abstract", "abstract", "summary", "basic_info_abstract"]),
-        ("Author Keywords", &["Author Keywords", "author_keywords", "Keywords"]),
+        (
+            "Document Type",
+            &[
+                "Document Type",
+                "document_type",
+                "record_type",
+                "Publication Type",
+                "basic_info_document_type",
+            ],
+        ),
+        (
+            "Abstract",
+            &["Abstract", "abstract", "summary", "basic_info_abstract"],
+        ),
+        (
+            "Author Keywords",
+            &["Author Keywords", "author_keywords", "Keywords"],
+        ),
         ("Keywords Plus", &["Keywords Plus", "keywords_plus"]),
-        ("UT (Unique ID)", &["UT (Unique ID)", "UT (Unique WOS ID)", "ut_unique_id", "ut_unique_wos_id", "ut", "UT", "UT号", "Accession Number", "accession_number"]),
-        ("Search Direction", &["Search Direction", "search_direction", "direction_name", "原始检索方向"]),
-        ("Suggested Section", &["Suggested Section", "suggested_section", "原始建议章节"]),
+        (
+            "UT (Unique ID)",
+            &[
+                "UT (Unique ID)",
+                "UT (Unique WOS ID)",
+                "ut_unique_id",
+                "ut_unique_wos_id",
+                "ut",
+                "UT",
+                "UT号",
+                "Accession Number",
+                "accession_number",
+            ],
+        ),
+        (
+            "Search Direction",
+            &[
+                "Search Direction",
+                "search_direction",
+                "direction_name",
+                "原始检索方向",
+            ],
+        ),
+        (
+            "Suggested Section",
+            &["Suggested Section", "suggested_section", "原始建议章节"],
+        ),
         ("Direction Index", &["Direction Index", "direction_index"]),
-        ("Matched Direction Count", &["Matched Direction Count", "matched_direction_count"]),
+        (
+            "Matched Direction Count",
+            &["Matched Direction Count", "matched_direction_count"],
+        ),
         ("主题匹配度评分", &["主题匹配度评分"]),
         ("证据可用性评分", &["证据可用性评分"]),
         ("章节适配度评分", &["章节适配度评分"]),
         ("对象方法适配度评分", &["对象方法适配度评分"]),
-        ("主题相关性总分", &["主题相关性总分", "topic_relevance_score", "relevance_score"]),
+        (
+            "主题相关性总分",
+            &["主题相关性总分", "topic_relevance_score", "relevance_score"],
+        ),
         ("相关性等级", &["相关性等级", "relevance_level"]),
         ("主题相关性理由", &["主题相关性理由"]),
         ("纳入建议", &["纳入建议", "inclusion_recommendation"]),
@@ -435,7 +550,10 @@ pub fn prepare_export_table(table: &Table) -> Table {
     ];
 
     let mut output = table.clone();
-    let alias_target_names: Vec<String> = export_aliases.iter().map(|(t, _)| (*t).to_string()).collect();
+    let alias_target_names: Vec<String> = export_aliases
+        .iter()
+        .map(|(t, _)| (*t).to_string())
+        .collect();
 
     for (target, candidates) in export_aliases {
         let source_column: Option<String> =
@@ -444,7 +562,8 @@ pub fn prepare_export_table(table: &Table) -> Table {
             None => {
                 output.ensure_column(target);
                 for row in &mut output.rows {
-                    row.entry((*target).to_string()).or_insert(Value::String(String::new()));
+                    row.entry((*target).to_string())
+                        .or_insert(Value::String(String::new()));
                 }
             }
             Some(src) => {
@@ -465,7 +584,8 @@ pub fn prepare_export_table(table: &Table) -> Table {
     for column in REVIEW_EVIDENCE_EXPORT_COLUMNS {
         output.ensure_column(column);
         for row in &mut output.rows {
-            row.entry((*column).to_string()).or_insert(Value::String(String::new()));
+            row.entry((*column).to_string())
+                .or_insert(Value::String(String::new()));
         }
     }
 
@@ -530,7 +650,9 @@ fn sanitize_and_truncate(table: &Table) -> Table {
 pub fn serialize_excel_table(table: &Table) -> AppResult<Vec<u8>> {
     let sanitized = sanitize_and_truncate(table);
     let mut workbook = Workbook::new();
-    let worksheet = workbook.add_worksheet().set_name("results")
+    let worksheet = workbook
+        .add_worksheet()
+        .set_name("results")
         .map_err(|e| AppError::Excel(e.to_string()))?;
     for (col_idx, name) in sanitized.columns.iter().enumerate() {
         worksheet
@@ -588,8 +710,14 @@ pub fn serialize_excel_table(table: &Table) -> AppResult<Vec<u8>> {
 fn clean_filename(value: &str, fallback: &str) -> String {
     let trimmed = value.trim();
     let cleaned = FILENAME_SANITIZE_RE.replace_all(trimmed, "_").to_string();
-    let cleaned = cleaned.trim_matches(|c: char| c == '.' || c == '_').to_string();
-    let pick = if cleaned.is_empty() { fallback.to_string() } else { cleaned };
+    let cleaned = cleaned
+        .trim_matches(|c: char| c == '.' || c == '_')
+        .to_string();
+    let pick = if cleaned.is_empty() {
+        fallback.to_string()
+    } else {
+        cleaned
+    };
     pick.chars().take(120).collect()
 }
 
@@ -605,7 +733,11 @@ fn first_nonblank(row: &HashMap<String, Value>, columns: &[&str]) -> String {
     String::new()
 }
 
-fn safe_fulltext_stem(row: &HashMap<String, Value>, ordinal: usize, used: &mut HashSet<String>) -> String {
+fn safe_fulltext_stem(
+    row: &HashMap<String, Value>,
+    ordinal: usize,
+    used: &mut HashSet<String>,
+) -> String {
     let ut = first_nonblank(row, UT_FILENAME_COLUMNS);
     let fallback = format!("paper_{ordinal:04}");
     let mut stem = clean_filename(&ut, &fallback);
@@ -741,10 +873,15 @@ fn externalize_content_text(table: &Table) -> (Table, Vec<(String, String)>) {
     if !output.has_column("content_text") {
         return (output, artifacts);
     }
-    for column in ["content_text_file", "content_text_excel_note", "content_text_structure_status"] {
+    for column in [
+        "content_text_file",
+        "content_text_excel_note",
+        "content_text_structure_status",
+    ] {
         output.ensure_column(column);
         for row in &mut output.rows {
-            row.entry(column.to_string()).or_insert(Value::String(String::new()));
+            row.entry(column.to_string())
+                .or_insert(Value::String(String::new()));
         }
     }
 
@@ -769,7 +906,11 @@ fn externalize_content_text(table: &Table) -> (Table, Vec<(String, String)>) {
                     .cell(row_idx, "article_title")
                     .map(|v| cell_as_string(Some(v)))
             })
-            .or_else(|| output.cell(row_idx, "title").map(|v| cell_as_string(Some(v))))
+            .or_else(|| {
+                output
+                    .cell(row_idx, "title")
+                    .map(|v| cell_as_string(Some(v)))
+            })
             .unwrap_or_default();
 
         let stem = {
@@ -781,9 +922,17 @@ fn externalize_content_text(table: &Table) -> (Table, Vec<(String, String)>) {
         metadata.insert("article_title".into(), Value::String(title));
         let (markdown, status) = build_structured_fulltext_markdown(&text, Some(&metadata));
         artifacts.push((filename.clone(), markdown));
-        output.set_cell(row_idx, "content_text_file", Value::String(filename.clone()));
+        output.set_cell(
+            row_idx,
+            "content_text_file",
+            Value::String(filename.clone()),
+        );
         output.set_cell(row_idx, "content_text", Value::String(filename));
-        output.set_cell(row_idx, "content_text_structure_status", Value::String(status));
+        output.set_cell(
+            row_idx,
+            "content_text_structure_status",
+            Value::String(status),
+        );
         output.set_cell(
             row_idx,
             "content_text_excel_note",
@@ -814,8 +963,8 @@ pub fn serialize_result_table(table: &Table) -> AppResult<(Vec<u8>, Table, Strin
     {
         let cursor = Cursor::new(&mut buf);
         let mut zip = ZipWriter::new(cursor);
-        let options: SimpleFileOptions = SimpleFileOptions::default()
-            .compression_method(CompressionMethod::Deflated);
+        let options: SimpleFileOptions =
+            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         zip.start_file("manifest.xlsx", options)
             .map_err(|e| AppError::Other(format!("zip start manifest.xlsx: {e}")))?;
         zip.write_all(&excel_bytes)?;
@@ -850,7 +999,10 @@ mod tests {
             [
                 ("Article Title".into(), json!("Sample Paper")),
                 ("DOI".into(), json!("10.1234/abcd")),
-                ("content_text".into(), json!("Abstract\nThis paper studies X.\nMethods\nWe used Y.")),
+                (
+                    "content_text".into(),
+                    json!("Abstract\nThis paper studies X.\nMethods\nWe used Y."),
+                ),
             ]
             .into_iter()
             .collect(),
@@ -912,9 +1064,6 @@ mod tests {
         let csv = "Article Title,DOI\nFoo,10.1/abc\n";
         let table = parse_csv_text(csv).unwrap();
         assert_eq!(table.nrows(), 1);
-        assert_eq!(
-            cell_as_string(table.cell(0, "Article Title")),
-            "Foo"
-        );
+        assert_eq!(cell_as_string(table.cell(0, "Article Title")), "Foo");
     }
 }

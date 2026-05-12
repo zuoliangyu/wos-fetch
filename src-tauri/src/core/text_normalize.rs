@@ -15,19 +15,24 @@ use std::collections::HashSet;
 
 use crate::{AppError, AppResult};
 
-static UNICODE_DASHES_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new("[\u{2010}\u{2011}\u{2012}\u{2013}\u{2014}\u{2015}\u{2212}\u{FF0D}]").unwrap());
+static UNICODE_DASHES_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new("[\u{2010}\u{2011}\u{2012}\u{2013}\u{2014}\u{2015}\u{2212}\u{FF0D}]").unwrap()
+});
 static BOOLEAN_AT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\s+(?:AND|OR|NOT)\b").unwrap());
 static YEAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\d{4}").unwrap());
 static YEAR_RANGE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?P<start>\d{4})\s*-\s*(?P<end>\d{4})|(?P<year>\d{4})").unwrap());
 static PY_PREFIX_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)\bPY\s*=\s*").unwrap());
-static FIELD_PREFIX_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*\s*=").unwrap());
+static FIELD_PREFIX_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9]*\s*=").unwrap());
 static NEAR_OP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^(?i)(NEAR|SAME)\s*/\s*\d+").unwrap());
 static WORD_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[A-Za-z][A-Za-z0-9_\-]*").unwrap());
 static WS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static MULTIWORD_NEAR_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\b(NEAR|SAME)\s*/\s*(\d+)\s+([A-Za-z][A-Za-z0-9_\-]*(?:\s+[A-Za-z][A-Za-z0-9_\-]*)+)").unwrap()
+    Regex::new(
+        r"\b(NEAR|SAME)\s*/\s*(\d+)\s+([A-Za-z][A-Za-z0-9_\-]*(?:\s+[A-Za-z][A-Za-z0-9_\-]*)+)",
+    )
+    .unwrap()
 });
 static GROUP_NEAR_GROUP_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r#"(?i)(?P<left>\((?:[^()"]|"[^"]*")+\))\s*(?P<op>NEAR|SAME)\s*/\s*(?P<n>\d+)\s*(?P<right>\((?:[^()"]|"[^"]*")+\))"#).unwrap()
@@ -36,13 +41,15 @@ static RELATIVE_EN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)\b(?:last|past|recent|latest)\s+(\d{1,2})\s+years?\b").unwrap());
 static RELATIVE_ZH_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?:近|最近|过去|近来|近年)\s*(\d{1,2})\s*年").unwrap());
+static LEADING_YEAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\d{4}").unwrap());
 
 fn wos_field_tags() -> &'static HashSet<&'static str> {
     static TAGS: Lazy<HashSet<&'static str>> = Lazy::new(|| {
         [
             "AB", "AD", "AI", "AK", "ALL", "AU", "CF", "CI", "CU", "DO", "DOP", "DT", "ED", "FD",
-            "FG", "FO", "FPY", "FT", "GP", "IS", "KP", "OA", "OG", "OO", "PMID", "PS", "PUBL", "PY",
-            "SA", "SDG", "SG", "SO", "SU", "TI", "TMAC", "TMIC", "TMSO", "TS", "UT", "WC", "ZP",
+            "FG", "FO", "FPY", "FT", "GP", "IS", "KP", "OA", "OG", "OO", "PMID", "PS", "PUBL",
+            "PY", "SA", "SDG", "SG", "SO", "SU", "TI", "TMAC", "TMIC", "TMSO", "TS", "UT", "WC",
+            "ZP",
         ]
         .into_iter()
         .collect()
@@ -165,7 +172,9 @@ fn validate_balanced_parentheses(query: &str) -> AppResult<()> {
         } else if ch == ')' {
             depth -= 1;
             if depth < 0 {
-                return Err(AppError::BadInput("检索式括号不配平：存在多余的右括号。".into()));
+                return Err(AppError::BadInput(
+                    "检索式括号不配平：存在多余的右括号。".into(),
+                ));
             }
         }
     }
@@ -207,7 +216,11 @@ fn tokenize_wos_query(query: &str) -> AppResult<Vec<QueryToken>> {
         }
         if ch == '(' || ch == ')' {
             tokens.push(QueryToken {
-                kind: if ch == '(' { TokenKind::LParen } else { TokenKind::RParen },
+                kind: if ch == '(' {
+                    TokenKind::LParen
+                } else {
+                    TokenKind::RParen
+                },
                 value: ch.to_string(),
                 start: idx,
                 end: idx + 1,
@@ -237,7 +250,10 @@ fn tokenize_wos_query(query: &str) -> AppResult<Vec<QueryToken>> {
             let rest: String = chars[idx..].iter().collect();
             if let Some(m) = FIELD_PREFIX_RE.find(&rest) {
                 let raw = m.as_str();
-                let field = raw.split_once('=').map(|(a, _)| a.trim().to_uppercase()).unwrap_or_default();
+                let field = raw
+                    .split_once('=')
+                    .map(|(a, _)| a.trim().to_uppercase())
+                    .unwrap_or_default();
                 let len = raw.chars().count();
                 tokens.push(QueryToken {
                     kind: TokenKind::Field,
@@ -250,7 +266,11 @@ fn tokenize_wos_query(query: &str) -> AppResult<Vec<QueryToken>> {
             }
             if let Some(m) = NEAR_OP_RE.find(&rest) {
                 let raw = m.as_str();
-                let op = raw.chars().take_while(|c| c.is_alphabetic()).collect::<String>().to_uppercase();
+                let op = raw
+                    .chars()
+                    .take_while(|c| c.is_alphabetic())
+                    .collect::<String>()
+                    .to_uppercase();
                 let len = raw.chars().count();
                 tokens.push(QueryToken {
                     kind: TokenKind::Op,
@@ -282,7 +302,11 @@ fn tokenize_wos_query(query: &str) -> AppResult<Vec<QueryToken>> {
         }
         // Fallback: consume non-space, non-paren run as a term.
         let mut end = idx + 1;
-        while end < chars.len() && !chars[end].is_whitespace() && chars[end] != '(' && chars[end] != ')' {
+        while end < chars.len()
+            && !chars[end].is_whitespace()
+            && chars[end] != '('
+            && chars[end] != ')'
+        {
             end += 1;
         }
         tokens.push(QueryToken {
@@ -299,34 +323,56 @@ fn tokenize_wos_query(query: &str) -> AppResult<Vec<QueryToken>> {
 fn validate_token_sequence(tokens: &[QueryToken]) -> AppResult<()> {
     let explicit_binary = ["AND", "OR", "SAME"];
     for (index, token) in tokens.iter().enumerate() {
-        let prev = if index > 0 { Some(&tokens[index - 1]) } else { None };
+        let prev = if index > 0 {
+            Some(&tokens[index - 1])
+        } else {
+            None
+        };
         let next = tokens.get(index + 1);
         match token.kind {
             TokenKind::Op => {
                 if explicit_binary.contains(&token.value.as_str()) {
-                    if prev.is_none() || matches!(prev.unwrap().kind, TokenKind::Op | TokenKind::LParen) {
+                    if prev.is_none()
+                        || matches!(prev.unwrap().kind, TokenKind::Op | TokenKind::LParen)
+                    {
                         return Err(AppError::BadInput(format!(
                             "检索式中 {} 左侧缺少有效表达式。",
                             token.value
                         )));
                     }
-                    if next.is_none() || matches!(next.unwrap().kind, TokenKind::Op | TokenKind::RParen) {
+                    if next.is_none()
+                        || matches!(next.unwrap().kind, TokenKind::Op | TokenKind::RParen)
+                    {
                         return Err(AppError::BadInput(format!(
                             "检索式中 {} 右侧缺少有效表达式。",
                             token.value
                         )));
                     }
                 } else if token.value == "NOT" {
-                    if prev.is_none() || matches!(prev.unwrap().kind, TokenKind::Op | TokenKind::LParen) {
-                        return Err(AppError::BadInput("检索式中 NOT 左侧缺少有效表达式。".into()));
+                    if prev.is_none()
+                        || matches!(prev.unwrap().kind, TokenKind::Op | TokenKind::LParen)
+                    {
+                        return Err(AppError::BadInput(
+                            "检索式中 NOT 左侧缺少有效表达式。".into(),
+                        ));
                     }
-                    if next.is_none() || matches!(next.unwrap().kind, TokenKind::Op | TokenKind::RParen) {
-                        return Err(AppError::BadInput("检索式中 NOT 右侧缺少有效表达式。".into()));
+                    if next.is_none()
+                        || matches!(next.unwrap().kind, TokenKind::Op | TokenKind::RParen)
+                    {
+                        return Err(AppError::BadInput(
+                            "检索式中 NOT 右侧缺少有效表达式。".into(),
+                        ));
                     }
                 }
             }
             TokenKind::Field => {
-                if next.map(|t| matches!(t.kind, TokenKind::LParen | TokenKind::Term | TokenKind::Field)) != Some(true) {
+                if next.map(|t| {
+                    matches!(
+                        t.kind,
+                        TokenKind::LParen | TokenKind::Term | TokenKind::Field
+                    )
+                }) != Some(true)
+                {
                     return Err(AppError::BadInput(format!(
                         "字段 {}= 后缺少检索内容。",
                         token.value
@@ -364,7 +410,10 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [QueryToken]) -> Self {
-        Self { tokens, position: 0 }
+        Self {
+            tokens,
+            position: 0,
+        }
     }
 
     fn peek(&self) -> Option<&QueryToken> {
@@ -430,7 +479,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_term(&mut self, stop: Option<TokenKind>) -> AppResult<QueryNode> {
-        let token = self.peek().cloned().ok_or_else(|| AppError::BadInput("检索式不完整。".into()))?;
+        let token = self
+            .peek()
+            .cloned()
+            .ok_or_else(|| AppError::BadInput("检索式不完整。".into()))?;
         if token.kind == TokenKind::Op && token.value == "NOT" {
             self.position += 1;
             return self.parse_term(stop);
@@ -469,9 +521,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_field_value(&mut self, field: &str) -> AppResult<QueryNode> {
-        let token = self.peek().cloned().ok_or_else(|| {
-            AppError::BadInput(format!("字段 {}= 后缺少检索内容。", field))
-        })?;
+        let token = self
+            .peek()
+            .cloned()
+            .ok_or_else(|| AppError::BadInput(format!("字段 {}= 后缺少检索内容。", field)))?;
         let text_fields = text_expression_fields();
         let atomic = !text_fields.contains(field) && wos_field_tags().contains(field);
 
@@ -551,7 +604,10 @@ fn tokens_with_implicit_and(tokens: &[QueryToken]) -> AppResult<Vec<QueryToken>>
     let mut result: Vec<QueryToken> = Vec::with_capacity(tokens.len() * 2);
     let mut prev_term_like = false;
     for token in tokens {
-        let current_term_like = matches!(token.kind, TokenKind::Term | TokenKind::Field | TokenKind::LParen);
+        let current_term_like = matches!(
+            token.kind,
+            TokenKind::Term | TokenKind::Field | TokenKind::LParen
+        );
         if prev_term_like && current_term_like {
             result.push(QueryToken {
                 kind: TokenKind::Op,
@@ -590,7 +646,9 @@ fn auto_expand_group_near_group(query: &str) -> String {
     let mut current = query.to_string();
     loop {
         let next = GROUP_NEAR_GROUP_RE
-            .replace_all(&current, |caps: &regex::Captures| expand_group_near_group(caps))
+            .replace_all(&current, |caps: &regex::Captures| {
+                expand_group_near_group(caps)
+            })
             .to_string();
         if next == current {
             return next;
@@ -603,7 +661,11 @@ fn expand_group_near_group(caps: &regex::Captures) -> String {
     let whole = caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string();
     let left_group = caps.name("left").map(|m| m.as_str()).unwrap_or("");
     let right_group = caps.name("right").map(|m| m.as_str()).unwrap_or("");
-    let op = caps.name("op").map(|m| m.as_str()).unwrap_or("").to_uppercase();
+    let op = caps
+        .name("op")
+        .map(|m| m.as_str())
+        .unwrap_or("")
+        .to_uppercase();
     let distance = caps.name("n").map(|m| m.as_str()).unwrap_or("");
     let left_inner = strip_outer_parens(left_group);
     let right_inner = strip_outer_parens(right_group);
@@ -660,7 +722,10 @@ fn split_top_level_or_terms(text: &str) -> Vec<String> {
                 depth = depth.max(1) - 1;
             } else if depth == 0
                 && idx + 2 <= chars.len()
-                && chars[idx..idx + 2].iter().collect::<String>().eq_ignore_ascii_case("OR")
+                && chars[idx..idx + 2]
+                    .iter()
+                    .collect::<String>()
+                    .eq_ignore_ascii_case("OR")
             {
                 let before_ok = idx == 0 || chars[idx - 1].is_whitespace();
                 let after_idx = idx + 2;
@@ -743,8 +808,8 @@ fn byte_to_char_index(s: &str, byte_idx: usize) -> usize {
 
 fn find_matching_parenthesis(chars: &[char], start: usize) -> Option<usize> {
     let mut depth: i32 = 0;
-    for index in start..chars.len() {
-        match chars[index] {
+    for (index, &ch) in chars.iter().enumerate().skip(start) {
+        match ch {
             '(' => depth += 1,
             ')' => {
                 depth -= 1;
@@ -781,7 +846,7 @@ fn find_bare_py_value_end(chars: &[char], start: usize) -> usize {
                     next_char_idx += 1;
                 }
                 let tail: String = chars[next_char_idx..].iter().collect();
-                if !Regex::new(r"^\d{4}").unwrap().is_match(&tail) {
+                if !LEADING_YEAR_RE.is_match(&tail) {
                     break;
                 }
             }
@@ -793,7 +858,10 @@ fn find_bare_py_value_end(chars: &[char], start: usize) -> usize {
 
 pub fn normalize_py_year_value(value: &str) -> AppResult<String> {
     let translated = normalize_wos_query_text(value);
-    let stripped = translated.trim().trim_matches(|c: char| c == '"' || c == '\'').to_string();
+    let stripped = translated
+        .trim()
+        .trim_matches(|c: char| c == '"' || c == '\'')
+        .to_string();
     let collapsed = WS_RE.replace_all(&stripped, " ").trim().to_string();
     if collapsed.is_empty() {
         return Err(AppError::BadInput(
@@ -810,12 +878,29 @@ pub fn normalize_py_year_value(value: &str) -> AppResult<String> {
     let mut seen: HashSet<String> = HashSet::new();
     for caps in YEAR_RANGE_RE.captures_iter(&collapsed) {
         let (token, start_year, end_year) = if let Some(y) = caps.name("year") {
-            let year: i32 = y.as_str().parse().map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
+            let year: i32 = y
+                .as_str()
+                .parse()
+                .map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
             (format!("{:04}", year), year, year)
         } else {
-            let start: i32 = caps.name("start").unwrap().as_str().parse().map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
-            let end: i32 = caps.name("end").unwrap().as_str().parse().map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
-            let (s, e) = if start > end { (end, start) } else { (start, end) };
+            let start: i32 = caps
+                .name("start")
+                .unwrap()
+                .as_str()
+                .parse()
+                .map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
+            let end: i32 = caps
+                .name("end")
+                .unwrap()
+                .as_str()
+                .parse()
+                .map_err(|_| AppError::BadInput("Invalid PY year format.".into()))?;
+            let (s, e) = if start > end {
+                (end, start)
+            } else {
+                (start, end)
+            };
             (format!("{:04}-{:04}", s, e), s, e)
         };
         if seen.insert(token.clone()) {
@@ -836,9 +921,17 @@ pub fn normalize_py_year_value(value: &str) -> AppResult<String> {
         if years == contiguous {
             return Ok(format!("{:04}-{:04}", years[0], years.last().unwrap()));
         }
-        return Ok(years.iter().map(|y| format!("{:04}", y)).collect::<Vec<_>>().join(" OR "));
+        return Ok(years
+            .iter()
+            .map(|y| format!("{:04}", y))
+            .collect::<Vec<_>>()
+            .join(" OR "));
     }
-    Ok(tokens.iter().map(|(t, _, _)| t.clone()).collect::<Vec<_>>().join(" OR "))
+    Ok(tokens
+        .iter()
+        .map(|(t, _, _)| t.clone())
+        .collect::<Vec<_>>()
+        .join(" OR "))
 }
 
 pub fn normalize_relative_year_value(value: &str) -> Option<String> {
@@ -852,7 +945,11 @@ pub fn normalize_relative_year_value(value: &str) -> Option<String> {
     };
     let count = count.clamp(1, 50);
     let current_year = chrono::Local::now().year();
-    Some(format!("{:04}-{:04}", current_year - count + 1, current_year))
+    Some(format!(
+        "{:04}-{:04}",
+        current_year - count + 1,
+        current_year
+    ))
 }
 
 #[cfg(test)]

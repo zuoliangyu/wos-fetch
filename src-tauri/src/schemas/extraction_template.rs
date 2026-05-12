@@ -51,13 +51,13 @@ fn as_string_list(value: &Value) -> Vec<String> {
             })
             .collect(),
         Value::String(s) => {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![trimmed.to_string()]
-                }
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                Vec::new()
+            } else {
+                vec![trimmed.to_string()]
             }
+        }
         Value::Null => Vec::new(),
         other => vec![other.to_string()],
     }
@@ -80,7 +80,9 @@ pub fn normalize_extraction_template(payload: &Value) -> AppResult<Value> {
 
     let mut normalized_fields: Vec<Value> = Vec::new();
     for item in &fields_array {
-        let Some(obj) = item.as_object() else { continue };
+        let Some(obj) = item.as_object() else {
+            continue;
+        };
         let field_name = obj
             .get("field_name")
             .or_else(|| obj.get("name"))
@@ -108,11 +110,15 @@ pub fn normalize_extraction_template(payload: &Value) -> AppResult<Value> {
 
     let mut output_schema = Map::new();
     for column in REVIEW_EVIDENCE_EXPORT_COLUMNS {
-        output_schema.entry((*column).to_string()).or_insert(Value::String(String::new()));
+        output_schema
+            .entry((*column).to_string())
+            .or_insert(Value::String(String::new()));
     }
     for field in &normalized_fields {
         if let Some(name) = field.get("field_name").and_then(Value::as_str) {
-            output_schema.entry(name.to_string()).or_insert(Value::String(String::new()));
+            output_schema
+                .entry(name.to_string())
+                .or_insert(Value::String(String::new()));
         }
     }
 
@@ -138,7 +144,10 @@ pub fn normalize_extraction_template(payload: &Value) -> AppResult<Value> {
     let mut root = Map::new();
     root.insert("template_name".into(), Value::String(template_name));
     root.insert("expert_role".into(), Value::String(expert_role));
-    root.insert("general_instruction".into(), Value::String(general_instruction));
+    root.insert(
+        "general_instruction".into(),
+        Value::String(general_instruction),
+    );
     root.insert("fields".into(), Value::Array(normalized_fields));
     root.insert("output_schema".into(), Value::Object(output_schema));
     Ok(Value::Object(root))

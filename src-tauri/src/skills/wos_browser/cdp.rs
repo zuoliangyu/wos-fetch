@@ -58,8 +58,7 @@ impl CdpSession {
                 let Some(msg) = self.ws.next().await else {
                     return Err(AppError::Browser("CDP socket closed unexpectedly".into()));
                 };
-                let msg =
-                    msg.map_err(|e| AppError::Browser(format!("CDP recv error: {e}")))?;
+                let msg = msg.map_err(|e| AppError::Browser(format!("CDP recv error: {e}")))?;
                 let text = match msg {
                     Message::Text(t) => t,
                     Message::Binary(b) => String::from_utf8_lossy(&b).into_owned(),
@@ -98,8 +97,9 @@ impl CdpSession {
         match methods {
             None => std::mem::take(&mut self.events),
             Some(allowed) => {
-                let (matched, remaining): (Vec<_>, Vec<_>) =
-                    std::mem::take(&mut self.events).into_iter().partition(|ev| {
+                let (matched, remaining): (Vec<_>, Vec<_>) = std::mem::take(&mut self.events)
+                    .into_iter()
+                    .partition(|ev| {
                         ev.get("method")
                             .and_then(Value::as_str)
                             .map(|m| allowed.contains(&m))
@@ -140,11 +140,7 @@ pub async fn evaluate_js_with(
 }
 
 /// Like `evaluate_js` but swallows errors and falls back to `default`.
-pub async fn safe_evaluate_js(
-    session: &mut CdpSession,
-    expression: &str,
-    default: Value,
-) -> Value {
+pub async fn safe_evaluate_js(session: &mut CdpSession, expression: &str, default: Value) -> Value {
     match evaluate_js(session, expression).await {
         Ok(v) if !v.is_null() => v,
         _ => default,
@@ -179,7 +175,10 @@ pub async fn goto_url(session: &mut CdpSession, url: &str) -> AppResult<bool> {
     }
     let escaped = serde_json::to_string(url)?;
     let js = format!("location.href = {escaped}; true;");
-    Ok(matches!(evaluate_js(session, &js).await?, Value::Bool(true)))
+    Ok(matches!(
+        evaluate_js(session, &js).await?,
+        Value::Bool(true)
+    ))
 }
 
 pub async fn dispatch_mouse_click(session: &mut CdpSession, x: f64, y: f64) -> AppResult<()> {

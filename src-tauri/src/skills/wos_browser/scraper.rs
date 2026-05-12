@@ -50,7 +50,7 @@ pub fn normalize_doi_candidate(value: &str) -> String {
     match DOI_RE.find(value) {
         Some(m) => m
             .as_str()
-            .trim_end_matches(|c: char| matches!(c, ' ' | '.' | ';' | ',' | ')' | ']' | '+'))
+            .trim_end_matches([' ', '.', ';', ',', ')', ']', '+'])
             .to_string(),
         None => String::new(),
     }
@@ -74,13 +74,19 @@ fn split_page_range(value: &str) -> (String, String) {
     }
     if let Some(caps) = PAGE_RANGE_RE.captures(text) {
         return (
-            caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
-            caps.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
+            caps.get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
+            caps.get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
         );
     }
     if let Some(caps) = PAGE_SINGLE_RE.captures(text) {
         return (
-            caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default(),
+            caps.get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default(),
             String::new(),
         );
     }
@@ -637,7 +643,10 @@ async fn wait_for_results_page_loaded(session: &mut CdpSession, timeout_seconds:
     wait_for_condition(session, RESULTS_PAGE_READY_JS, timeout_seconds, 0.25).await;
 }
 
-async fn collect_result_rows_via_dom(session: &mut CdpSession, page_index: u32) -> AppResult<Value> {
+async fn collect_result_rows_via_dom(
+    session: &mut CdpSession,
+    page_index: u32,
+) -> AppResult<Value> {
     let js = RESULT_ROWS_DOM_JS.replace("__PAGE_INDEX__", &page_index.to_string());
     evaluate_js_with(session, &js, true).await
 }
@@ -750,10 +759,10 @@ async fn extract_doi_from_full_record_page(
 // ---------------------------------------------------------------------------
 
 async fn click_next_page(session: &mut CdpSession) -> bool {
-    match evaluate_js(session, CLICK_NEXT_PAGE_JS).await {
-        Ok(Value::Bool(true)) => true,
-        _ => false,
-    }
+    matches!(
+        evaluate_js(session, CLICK_NEXT_PAGE_JS).await,
+        Ok(Value::Bool(true))
+    )
 }
 
 pub fn build_next_page_url(current_url: &str) -> String {
@@ -816,33 +825,87 @@ fn record_to_value(record: &ScrapedRecord) -> Value {
     let mut m = Map::new();
     m.insert("search_rank".into(), Value::from(record.search_rank));
     m.insert("rank".into(), Value::from(record.rank));
-    m.insert("Article Title".into(), Value::String(record.article_title.clone()));
+    m.insert(
+        "Article Title".into(),
+        Value::String(record.article_title.clone()),
+    );
     m.insert("Authors".into(), Value::String(record.authors.clone()));
-    m.insert("Source Title".into(), Value::String(record.source_title.clone()));
+    m.insert(
+        "Source Title".into(),
+        Value::String(record.source_title.clone()),
+    );
     m.insert("DOI".into(), Value::String(record.doi.clone()));
-    m.insert("Publication Year".into(), Value::String(record.publication_year.clone()));
+    m.insert(
+        "Publication Year".into(),
+        Value::String(record.publication_year.clone()),
+    );
     m.insert("Volume".into(), Value::String(record.volume.clone()));
     m.insert("Issue".into(), Value::String(record.issue.clone()));
     m.insert("Pages".into(), Value::String(record.pages.clone()));
-    m.insert("Start Page".into(), Value::String(record.start_page.clone()));
+    m.insert(
+        "Start Page".into(),
+        Value::String(record.start_page.clone()),
+    );
     m.insert("End Page".into(), Value::String(record.end_page.clone()));
-    m.insert("Document Type".into(), Value::String(record.document_type.clone()));
-    m.insert("Abstract".into(), Value::String(record.abstract_text.clone()));
-    m.insert("Author Keywords".into(), Value::String(record.author_keywords.clone()));
-    m.insert("Keywords Plus".into(), Value::String(record.keywords_plus.clone()));
-    m.insert("Times Cited".into(), Value::String(record.times_cited.clone()));
-    m.insert("Cited References Count".into(), Value::String(record.cited_references_count.clone()));
-    m.insert("Cited References".into(), Value::String(record.cited_references.clone()));
-    m.insert("UT (Unique ID)".into(), Value::String(record.ut_unique_id.clone()));
-    m.insert("source_page_url".into(), Value::String(record.source_page_url.clone()));
-    m.insert("source_page_index".into(), Value::from(record.source_page_index));
-    m.insert("raw_snippet".into(), Value::String(record.raw_snippet.clone()));
-    m.insert("full_record_link".into(), Value::String(record.full_record_link.clone()));
-    m.insert("doi_candidates".into(), Value::String(record.doi_candidates.clone()));
+    m.insert(
+        "Document Type".into(),
+        Value::String(record.document_type.clone()),
+    );
+    m.insert(
+        "Abstract".into(),
+        Value::String(record.abstract_text.clone()),
+    );
+    m.insert(
+        "Author Keywords".into(),
+        Value::String(record.author_keywords.clone()),
+    );
+    m.insert(
+        "Keywords Plus".into(),
+        Value::String(record.keywords_plus.clone()),
+    );
+    m.insert(
+        "Times Cited".into(),
+        Value::String(record.times_cited.clone()),
+    );
+    m.insert(
+        "Cited References Count".into(),
+        Value::String(record.cited_references_count.clone()),
+    );
+    m.insert(
+        "Cited References".into(),
+        Value::String(record.cited_references.clone()),
+    );
+    m.insert(
+        "UT (Unique ID)".into(),
+        Value::String(record.ut_unique_id.clone()),
+    );
+    m.insert(
+        "source_page_url".into(),
+        Value::String(record.source_page_url.clone()),
+    );
+    m.insert(
+        "source_page_index".into(),
+        Value::from(record.source_page_index),
+    );
+    m.insert(
+        "raw_snippet".into(),
+        Value::String(record.raw_snippet.clone()),
+    );
+    m.insert(
+        "full_record_link".into(),
+        Value::String(record.full_record_link.clone()),
+    );
+    m.insert(
+        "doi_candidates".into(),
+        Value::String(record.doi_candidates.clone()),
+    );
     m.insert("doi_raw".into(), Value::String(record.doi.clone()));
     m.insert("doi_url".into(), Value::String(record.doi_url.clone()));
     if !record.doi_recovery_source.is_empty() {
-        m.insert("doi_recovery_source".into(), Value::String(record.doi_recovery_source.clone()));
+        m.insert(
+            "doi_recovery_source".into(),
+            Value::String(record.doi_recovery_source.clone()),
+        );
     }
     Value::Object(m)
 }
@@ -903,27 +966,15 @@ fn build_final_record(
         &map_field(fallback, "sourceTitle"),
         &map_field(row, "sourceTitle"),
     ]);
-    let authors = first_nonblank(&[
-        &map_field(fallback, "authors"),
-        &map_field(row, "authors"),
-    ]);
+    let authors = first_nonblank(&[&map_field(fallback, "authors"), &map_field(row, "authors")]);
     let publication_year = first_nonblank(&[
         &map_field(fallback, "publicationYear"),
         &map_field(row, "publicationYear"),
         &map_field(row, "year"),
     ]);
-    let volume_raw = first_nonblank(&[
-        &map_field(fallback, "volume"),
-        &map_field(row, "volume"),
-    ]);
-    let issue_raw = first_nonblank(&[
-        &map_field(fallback, "issue"),
-        &map_field(row, "issue"),
-    ]);
-    let pages_raw = first_nonblank(&[
-        &map_field(fallback, "pages"),
-        &map_field(row, "pages"),
-    ]);
+    let volume_raw = first_nonblank(&[&map_field(fallback, "volume"), &map_field(row, "volume")]);
+    let issue_raw = first_nonblank(&[&map_field(fallback, "issue"), &map_field(row, "issue")]);
+    let pages_raw = first_nonblank(&[&map_field(fallback, "pages"), &map_field(row, "pages")]);
     let (volume, issue, pages) = normalize_wos_metadata(&volume_raw, &issue_raw, &pages_raw);
     let (start_page, end_page) = split_page_range(&pages);
     let document_type = first_nonblank(&[
@@ -1004,10 +1055,12 @@ async fn extract_records_via_dom(
     let payload = match collect_result_rows_via_dom(session, page_index).await {
         Ok(v) => v,
         Err(err) => {
-            let mut diag = PageDiagnostics::default();
-            diag.page_index = page_index;
-            diag.current_page_number = page_index as i64;
-            diag.dom_error = err.to_string().chars().take(500).collect();
+            let diag = PageDiagnostics {
+                page_index,
+                current_page_number: page_index as i64,
+                dom_error: err.to_string().chars().take(500).collect(),
+                ..PageDiagnostics::default()
+            };
             return Ok((Vec::new(), diag));
         }
     };
@@ -1103,14 +1156,25 @@ async fn extract_records_via_dom(
             let mut entry = Map::new();
             entry.insert(
                 "rank".into(),
-                Value::from(prepared.raw.get("rank").and_then(Value::as_u64).unwrap_or(0)),
+                Value::from(
+                    prepared
+                        .raw
+                        .get("rank")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(0),
+                ),
             );
-            entry.insert("full_record_link".into(), Value::String(prepared.full_record_link.clone()));
+            entry.insert(
+                "full_record_link".into(),
+                Value::String(prepared.full_record_link.clone()),
+            );
             entry.insert("error".into(), Value::String(error));
             detail_errors.push(Value::Object(entry));
         }
-        let row_dois = normalized_doi_candidates(prepared.raw.get("doiCandidates").unwrap_or(&Value::Null));
-        let fallback_dois = normalized_doi_candidates(fallback.get("doiCandidates").unwrap_or(&Value::Null));
+        let row_dois =
+            normalized_doi_candidates(prepared.raw.get("doiCandidates").unwrap_or(&Value::Null));
+        let fallback_dois =
+            normalized_doi_candidates(fallback.get("doiCandidates").unwrap_or(&Value::Null));
         let mut combined: Vec<String> = Vec::new();
         for d in row_dois.into_iter().chain(fallback_dois) {
             if !combined.contains(&d) {
@@ -1137,15 +1201,22 @@ async fn extract_records_via_dom(
             continue;
         }
 
-        rows_without_doi.push(prepared.raw.get("rank").and_then(Value::as_u64).unwrap_or(0) as u32);
+        rows_without_doi.push(
+            prepared
+                .raw
+                .get("rank")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32,
+        );
         missing_rows.push((index, fallback));
     }
 
     // Page-wide single-unused DOI rescue (matches Python).
-    let mut page_wide_unused: Vec<String> = normalized_doi_candidates(&Value::Array(page_wide_doi.clone()))
-        .into_iter()
-        .filter(|d| !seen_doi.contains(d))
-        .collect();
+    let mut page_wide_unused: Vec<String> =
+        normalized_doi_candidates(&Value::Array(page_wide_doi.clone()))
+            .into_iter()
+            .filter(|d| !seen_doi.contains(d))
+            .collect();
     let mut recovered_from_page_scan: usize = 0;
     if missing_rows.len() == 1 && page_wide_unused.len() == 1 {
         let (idx, fallback) = missing_rows.remove(0);
@@ -1154,7 +1225,7 @@ async fn extract_records_via_dom(
         if let Some(record) = build_final_record(
             &prepared.raw,
             &fallback,
-            &[recovered_doi.clone()],
+            std::slice::from_ref(&recovered_doi),
             page_index,
             page_url,
             (final_rows.len() + 1) as u32,
@@ -1167,8 +1238,10 @@ async fn extract_records_via_dom(
         }
     }
 
-    let mut diag = PageDiagnostics::default();
-    diag.page_index = page_index;
+    let mut diag = PageDiagnostics {
+        page_index,
+        ..PageDiagnostics::default()
+    };
     diag.current_page_number = payload_obj
         .get("currentPageNumber")
         .and_then(Value::as_i64)
@@ -1256,8 +1329,15 @@ pub async fn scrape_wos_pages(
             ));
         }
 
-        let (page_records, mut diag) =
-            extract_records_via_dom(&mut session, page_index, port, detail_workers, remaining, &page_url).await?;
+        let (page_records, mut diag) = extract_records_via_dom(
+            &mut session,
+            page_index,
+            port,
+            detail_workers,
+            remaining,
+            &page_url,
+        )
+        .await?;
         diag.title = snapshot.title.clone();
 
         for record in &page_records {
@@ -1335,8 +1415,14 @@ mod tests {
 
     #[test]
     fn normalize_doi_strips_trailing_punctuation() {
-        assert_eq!(normalize_doi_candidate("10.1234/abc.efg)"), "10.1234/abc.efg");
-        assert_eq!(normalize_doi_candidate("foo 10.5555/x;bar."), "10.5555/x;bar");
+        assert_eq!(
+            normalize_doi_candidate("10.1234/abc.efg)"),
+            "10.1234/abc.efg"
+        );
+        assert_eq!(
+            normalize_doi_candidate("foo 10.5555/x;bar."),
+            "10.5555/x;bar"
+        );
         assert_eq!(normalize_doi_candidate("no doi here"), "");
     }
 
@@ -1347,7 +1433,10 @@ mod tests {
             extract_ut_from_url("https://x.com/wos/woscc/full-record/WOS:000123"),
             "WOS:000123"
         );
-        assert_eq!(extract_ut_from_url("https://x.com/wos/woscc/full-record/abc"), "abc");
+        assert_eq!(
+            extract_ut_from_url("https://x.com/wos/woscc/full-record/abc"),
+            "abc"
+        );
     }
 
     #[test]
@@ -1359,8 +1448,7 @@ mod tests {
 
     #[test]
     fn metadata_cleanup_peels_pages_tail() {
-        let (vol, iss, pgs) =
-            normalize_wos_metadata("Volume 56 Pages 2002-2006", "Issue 12", "");
+        let (vol, iss, pgs) = normalize_wos_metadata("Volume 56 Pages 2002-2006", "Issue 12", "");
         assert!(vol.starts_with("Volume 56"));
         assert!(!vol.contains("Pages"));
         assert_eq!(iss, "Issue 12");

@@ -12,8 +12,9 @@ use crate::core::json_protocol::load_json_object;
 use crate::core::llm_client::{chat_text, ChatMessage, LlmConfig};
 use crate::{AppError, AppResult};
 
-static MOJIBAKE_HINT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"[\u{C3}\u{C2}\u{C4}\u{C5}][\u{80}-\u{ff}]|(?:ä|å|æ|ç|è|é|ï|ð)").unwrap());
+static MOJIBAKE_HINT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[\u{C3}\u{C2}\u{C4}\u{C5}][\u{80}-\u{ff}]|(?:ä|å|æ|ç|è|é|ï|ð)").unwrap()
+});
 static CJK_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[\u{4E00}-\u{9FFF}]").unwrap());
 static WS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static NUMBER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"-?\d+(?:\.\d+)?").unwrap());
@@ -26,7 +27,7 @@ fn cell_string(value: Option<&Value>) -> String {
     }
 }
 
-fn first_nonblank<'a>(record: &Map<String, Value>, keys: &[&str]) -> String {
+fn first_nonblank(record: &Map<String, Value>, keys: &[&str]) -> String {
     for k in keys {
         let text = cell_string(record.get(*k));
         if !text.trim().is_empty() {
@@ -40,8 +41,15 @@ fn text_cleanup(raw: &str) -> String {
     let mut text = raw.to_string();
     if MOJIBAKE_HINT_RE.is_match(&text) {
         for encoding in ["latin-1", "windows-1252"] {
-            let Some(enc) = encoding_rs::Encoding::for_label(encoding.as_bytes()) else { continue };
-            let bytes: Vec<u8> = text.chars().map(|c| c as u32).filter(|c| *c < 256).map(|c| c as u8).collect();
+            let Some(enc) = encoding_rs::Encoding::for_label(encoding.as_bytes()) else {
+                continue;
+            };
+            let bytes: Vec<u8> = text
+                .chars()
+                .map(|c| c as u32)
+                .filter(|c| *c < 256)
+                .map(|c| c as u8)
+                .collect();
             if bytes.len() != text.chars().count() {
                 continue;
             }
@@ -64,17 +72,27 @@ fn take_chars(text: &str, max_chars: usize) -> String {
 }
 
 fn level_from_score(score: i64) -> &'static str {
-    if score >= 80 { "核心" }
-    else if score >= 60 { "辅助" }
-    else if score >= 40 { "背景" }
-    else { "排除" }
+    if score >= 80 {
+        "核心"
+    } else if score >= 60 {
+        "辅助"
+    } else if score >= 40 {
+        "背景"
+    } else {
+        "排除"
+    }
 }
 
 fn recommendation_from_score(score: i64) -> &'static str {
-    if score >= 80 { "核心纳入" }
-    else if score >= 60 { "辅助纳入" }
-    else if score >= 40 { "背景参考" }
-    else { "排除" }
+    if score >= 80 {
+        "核心纳入"
+    } else if score >= 60 {
+        "辅助纳入"
+    } else if score >= 40 {
+        "背景参考"
+    } else {
+        "排除"
+    }
 }
 
 fn clamp_int(value: &Value, low: i64, high: i64) -> i64 {
@@ -95,21 +113,51 @@ fn clamp_int(value: &Value, low: i64, high: i64) -> i64 {
 
 fn record_for_llm(record: &Map<String, Value>, local_index: usize) -> Map<String, Value> {
     let id = format!("R{:03}", local_index + 1);
-    let title = text_cleanup(&first_nonblank(record, &["Article Title", "article_title", "title"]));
-    let abstract_text = text_cleanup(&first_nonblank(record, &["Abstract", "abstract", "summary"]));
+    let title = text_cleanup(&first_nonblank(
+        record,
+        &["Article Title", "article_title", "title"],
+    ));
+    let abstract_text = text_cleanup(&first_nonblank(
+        record,
+        &["Abstract", "abstract", "summary"],
+    ));
     let dtype = text_cleanup(&first_nonblank(record, &["Document Type", "document_type"]));
-    let source = text_cleanup(&first_nonblank(record, &["Source Title", "source_title", "journal"]));
-    let author_keywords = text_cleanup(&first_nonblank(record, &["Author Keywords", "author_keywords"]));
+    let source = text_cleanup(&first_nonblank(
+        record,
+        &["Source Title", "source_title", "journal"],
+    ));
+    let author_keywords = text_cleanup(&first_nonblank(
+        record,
+        &["Author Keywords", "author_keywords"],
+    ));
     let keywords_plus = text_cleanup(&first_nonblank(record, &["Keywords Plus", "keywords_plus"]));
 
     let mut map = Map::new();
     map.insert("record_id".into(), Value::String(id));
-    map.insert("article_title".into(), Value::String(take_chars(&title, 500)));
-    map.insert("abstract".into(), Value::String(take_chars(&abstract_text, 2500)));
-    map.insert("document_type".into(), Value::String(take_chars(&dtype, 160)));
-    map.insert("source_title".into(), Value::String(take_chars(&source, 240)));
-    map.insert("author_keywords".into(), Value::String(take_chars(&author_keywords, 500)));
-    map.insert("keywords_plus".into(), Value::String(take_chars(&keywords_plus, 500)));
+    map.insert(
+        "article_title".into(),
+        Value::String(take_chars(&title, 500)),
+    );
+    map.insert(
+        "abstract".into(),
+        Value::String(take_chars(&abstract_text, 2500)),
+    );
+    map.insert(
+        "document_type".into(),
+        Value::String(take_chars(&dtype, 160)),
+    );
+    map.insert(
+        "source_title".into(),
+        Value::String(take_chars(&source, 240)),
+    );
+    map.insert(
+        "author_keywords".into(),
+        Value::String(take_chars(&author_keywords, 500)),
+    );
+    map.insert(
+        "keywords_plus".into(),
+        Value::String(take_chars(&keywords_plus, 500)),
+    );
     map
 }
 
@@ -140,13 +188,25 @@ fn normalize_llm_score(item: &Map<String, Value>) -> Map<String, Value> {
     out.insert("主题匹配度评分".into(), Value::String(topic.to_string()));
     out.insert("证据可用性评分".into(), Value::String(evidence.to_string()));
     out.insert("章节适配度评分".into(), Value::String(section.to_string()));
-    out.insert("对象方法适配度评分".into(), Value::String(method.to_string()));
+    out.insert(
+        "对象方法适配度评分".into(),
+        Value::String(method.to_string()),
+    );
     out.insert("主题相关性总分".into(), Value::String(total.to_string()));
-    out.insert("相关性等级".into(), Value::String(level_from_score(total).into()));
+    out.insert(
+        "相关性等级".into(),
+        Value::String(level_from_score(total).into()),
+    );
     out.insert("主题相关性理由".into(), Value::String(reason));
-    out.insert("纳入建议".into(), Value::String(recommendation_from_score(total).into()));
+    out.insert(
+        "纳入建议".into(),
+        Value::String(recommendation_from_score(total).into()),
+    );
     out.insert("排除或降权原因".into(), Value::String(downgrade));
-    out.insert("relevance_score_source".into(), Value::String("llm_title_abstract".into()));
+    out.insert(
+        "relevance_score_source".into(),
+        Value::String("llm_title_abstract".into()),
+    );
     out
 }
 
@@ -171,7 +231,9 @@ async fn score_batch_with_llm(
     let index_by_record_id: std::collections::HashMap<String, usize> = batch
         .iter()
         .enumerate()
-        .map(|(local_index, (original_index, _))| (format!("R{:03}", local_index + 1), *original_index))
+        .map(|(local_index, (original_index, _))| {
+            (format!("R{:03}", local_index + 1), *original_index)
+        })
         .collect();
 
     let payload = json!({
@@ -200,21 +262,40 @@ async fn score_batch_with_llm(
         serde_json::to_string(&payload).unwrap_or_default()
     );
     let messages = vec![
-        ChatMessage { role: "system".into(), content: system_prompt.into() },
-        ChatMessage { role: "user".into(), content: user_prompt },
+        ChatMessage {
+            role: "system".into(),
+            content: system_prompt.into(),
+        },
+        ChatMessage {
+            role: "user".into(),
+            content: user_prompt,
+        },
     ];
-    let cfg = LlmConfig { temperature: Some(0.0), ..config.clone() };
+    let cfg = LlmConfig {
+        temperature: Some(0.0),
+        ..config.clone()
+    };
     let raw = chat_text(&cfg, &messages).await?;
     let parsed = load_json_object(&raw)?;
     let items = parsed
         .get("scores")
         .and_then(Value::as_array)
         .cloned()
-        .ok_or_else(|| AppError::Llm("LLM relevance scoring did not return a scores array.".into()))?;
-    let mut output: std::collections::HashMap<usize, Map<String, Value>> = std::collections::HashMap::new();
+        .ok_or_else(|| {
+            AppError::Llm("LLM relevance scoring did not return a scores array.".into())
+        })?;
+    let mut output: std::collections::HashMap<usize, Map<String, Value>> =
+        std::collections::HashMap::new();
     for item in items {
-        let Some(obj) = item.as_object() else { continue };
-        let id = obj.get("record_id").and_then(Value::as_str).unwrap_or("").trim().to_string();
+        let Some(obj) = item.as_object() else {
+            continue;
+        };
+        let id = obj
+            .get("record_id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if let Some(&original_index) = index_by_record_id.get(&id) {
             output.insert(original_index, normalize_llm_score(obj));
         }
@@ -238,8 +319,7 @@ pub async fn score_relevance(
         return Ok(scored);
     }
     let size = batch_size.clamp(1, 20);
-    let indexed: Vec<(usize, Map<String, Value>)> =
-        scored.iter().cloned().enumerate().collect();
+    let indexed: Vec<(usize, Map<String, Value>)> = scored.iter().cloned().enumerate().collect();
     let mut start = 0;
     while start < indexed.len() {
         let end = (start + size).min(indexed.len());
@@ -302,8 +382,17 @@ mod tests {
         });
         let obj = item.as_object().unwrap();
         let out = normalize_llm_score(obj);
-        assert_eq!(out.get("主题相关性总分").unwrap(), &Value::String("80".into()));
-        assert_eq!(out.get("相关性等级").unwrap(), &Value::String("核心".into()));
-        assert_eq!(out.get("纳入建议").unwrap(), &Value::String("核心纳入".into()));
+        assert_eq!(
+            out.get("主题相关性总分").unwrap(),
+            &Value::String("80".into())
+        );
+        assert_eq!(
+            out.get("相关性等级").unwrap(),
+            &Value::String("核心".into())
+        );
+        assert_eq!(
+            out.get("纳入建议").unwrap(),
+            &Value::String("核心纳入".into())
+        );
     }
 }

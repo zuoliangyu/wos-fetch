@@ -95,7 +95,10 @@ pub fn load_checkpoint_meta(resume_key: &str) -> Map<String, Value> {
     if !path.exists() {
         return Map::new();
     }
-    match fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+    match fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+    {
         Some(Value::Object(map)) => map,
         _ => Map::new(),
     }
@@ -217,8 +220,12 @@ pub fn load_checkpoint_rows(resume_key: &str) -> Vec<Value> {
 
     let mut rows: Vec<Value> = Vec::new();
     for path in batch_paths {
-        let Ok(text) = fs::read_to_string(&path) else { continue };
-        let Ok(parsed) = serde_json::from_str::<Value>(&text) else { continue };
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(parsed) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
         if let Value::Array(items) = parsed {
             rows.extend(items.into_iter().filter(|v| v.is_object()));
         }
@@ -267,7 +274,10 @@ pub fn list_checkpoints() -> Vec<CheckpointListItem> {
     entries
         .into_iter()
         .map(|(dir, _)| {
-            let resume_key = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let resume_key = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
             let meta = load_checkpoint_meta(&resume_key);
             let batch_count = fs::read_dir(&dir)
                 .map(|it| {
@@ -302,10 +312,7 @@ pub fn list_checkpoints() -> Vec<CheckpointListItem> {
                 total_rows: meta.get("total_rows").and_then(Value::as_u64).unwrap_or(0),
                 batch_count,
                 has_final_result: has_final,
-                updated_at: meta
-                    .get("updated_at")
-                    .and_then(Value::as_i64)
-                    .unwrap_or(0),
+                updated_at: meta.get("updated_at").and_then(Value::as_i64).unwrap_or(0),
             }
         })
         .collect()

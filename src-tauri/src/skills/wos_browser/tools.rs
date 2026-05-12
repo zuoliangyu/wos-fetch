@@ -76,7 +76,7 @@ pub async fn get_page_targets(port: u16) -> AppResult<Vec<DebugTarget>> {
 
 /// `PUT http://127.0.0.1:<port>/json/new?<url>`
 pub async fn open_debug_target(url: &str, port: u16) -> AppResult<DebugTarget> {
-    let encoded = urlencoding_encode(url.is_empty().then_some("about:blank").unwrap_or(url));
+    let encoded = urlencoding_encode(if url.is_empty() { "about:blank" } else { url });
     let endpoint = format!("http://127.0.0.1:{port}/json/new?{encoded}");
     let client = http_client()?;
     let resp = client
@@ -155,7 +155,9 @@ pub async fn find_wos_target(port: u16, preferred_patterns: &[&str]) -> AppResul
     let targets = get_debug_targets(port).await?;
     find_wos_target_impl(&targets, preferred_patterns)
         .cloned()
-        .ok_or_else(|| AppError::Browser("No browser page target was found on the debug port.".into()))
+        .ok_or_else(|| {
+            AppError::Browser("No browser page target was found on the debug port.".into())
+        })
 }
 
 pub async fn find_wos_search_target(port: u16) -> AppResult<DebugTarget> {
@@ -242,7 +244,11 @@ fn expand_env_path(raw: &str) -> Option<PathBuf> {
         i += 1;
     }
     let path = PathBuf::from(out);
-    if path.exists() { Some(path) } else { None }
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
 }
 
 const BROWSER_CANDIDATES: &[(&str, &[&str])] = &[
@@ -301,7 +307,9 @@ pub async fn launch_chrome_debug(
     port: u16,
 ) -> AppResult<()> {
     if chrome_path.trim().is_empty() {
-        return Err(AppError::Browser("Browser executable path is empty.".into()));
+        return Err(AppError::Browser(
+            "Browser executable path is empty.".into(),
+        ));
     }
     if !Path::new(chrome_path).exists() {
         return Err(AppError::Browser(format!(
@@ -311,7 +319,11 @@ pub async fn launch_chrome_debug(
     tokio::fs::create_dir_all(user_data_dir).await?;
     let user_data_arg = format!("--user-data-dir={}", user_data_dir.display());
     let port_arg = format!("--remote-debugging-port={port}");
-    let url_arg = if start_url.is_empty() { "about:blank" } else { start_url };
+    let url_arg = if start_url.is_empty() {
+        "about:blank"
+    } else {
+        start_url
+    };
     Command::new(chrome_path)
         .arg(&port_arg)
         .arg("--remote-debugging-address=127.0.0.1")
@@ -357,8 +369,7 @@ pub async fn launch_wos_browser(
 
     // First try reusing an existing debug port session.
     if let Ok(targets) = get_debug_targets(port).await {
-        let page_targets: Vec<&DebugTarget> =
-            targets.iter().filter(|t| t.kind == "page").collect();
+        let page_targets: Vec<&DebugTarget> = targets.iter().filter(|t| t.kind == "page").collect();
         if !page_targets.is_empty() {
             return Ok(LaunchResult {
                 browser_name: "existing Chromium browser".into(),
@@ -388,7 +399,13 @@ pub async fn launch_wos_browser(
         .map(Path::to_path_buf)
         .unwrap_or_else(default_profile_dir);
 
-    launch_chrome_debug(&exec_path, &resolved_start_url, &resolved_user_data_dir, port).await?;
+    launch_chrome_debug(
+        &exec_path,
+        &resolved_start_url,
+        &resolved_user_data_dir,
+        port,
+    )
+    .await?;
 
     // Poll for a page target to appear.
     let deadline =

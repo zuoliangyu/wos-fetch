@@ -250,11 +250,17 @@ pub async fn fill_advanced_search_and_submit(
             let mut click_info = serde_json::Map::new();
             click_info.insert(
                 "button_label".into(),
-                button.get("label").cloned().unwrap_or(Value::String(String::new())),
+                button
+                    .get("label")
+                    .cloned()
+                    .unwrap_or(Value::String(String::new())),
             );
             click_info.insert(
                 "selector".into(),
-                button.get("selector").cloned().unwrap_or(Value::String(String::new())),
+                button
+                    .get("selector")
+                    .cloned()
+                    .unwrap_or(Value::String(String::new())),
             );
             click_info.insert("x".into(), Value::from(x));
             click_info.insert("y".into(), Value::from(y));
@@ -279,7 +285,10 @@ pub async fn fill_advanced_search_and_submit(
     payload.insert("navigation_started".into(), Value::Bool(started));
     if !started {
         payload.insert("ok".into(), Value::Bool(false));
-        payload.insert("reason".into(), Value::String("search_submit_did_not_start".into()));
+        payload.insert(
+            "reason".into(),
+            Value::String("search_submit_did_not_start".into()),
+        );
     }
     Ok(Value::Object(payload))
 }
@@ -390,7 +399,11 @@ pub async fn run_wos_search(
     let before = get_page_snapshot(&mut session, 100_000).await;
     let opened = open_wos_query_builder(&mut session, 20.0).await?;
     if !opened.ok {
-        let reason = if opened.reason.is_empty() { "unknown_error".into() } else { opened.reason };
+        let reason = if opened.reason.is_empty() {
+            "unknown_error".into()
+        } else {
+            opened.reason
+        };
         session.close().await;
         return Err(AppError::Browser(format!(
             "Could not open the WoS query builder: {reason}"
@@ -401,7 +414,11 @@ pub async fn run_wos_search(
 
     let submit_result = fill_advanced_search_and_submit(&mut session, query).await?;
     let submit_obj = submit_result.as_object().cloned().unwrap_or_default();
-    if !submit_obj.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+    if !submit_obj
+        .get("ok")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
         let reason = submit_obj
             .get("reason")
             .and_then(Value::as_str)
@@ -413,8 +430,7 @@ pub async fn run_wos_search(
         )));
     }
 
-    let ready_info =
-        wait_for_wos_results_ready(&mut session, wait_seconds.max(1.0)).await;
+    let ready_info = wait_for_wos_results_ready(&mut session, wait_seconds.max(1.0)).await;
     let after = get_page_snapshot(&mut session, 100_000).await;
     let action = submit_obj
         .get("action")

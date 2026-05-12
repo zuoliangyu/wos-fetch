@@ -271,10 +271,8 @@ fn trim_to_last_complete_pair(candidate: &str) -> String {
 pub fn repair_json_text(text: &str) -> String {
     let mut candidate = extract_json_candidate(text);
     candidate = candidate
-        .replace('\u{201C}', "\"")
-        .replace('\u{201D}', "\"")
-        .replace('\u{2018}', "'")
-        .replace('\u{2019}', "'");
+        .replace(['\u{201C}', '\u{201D}'], "\"")
+        .replace(['\u{2018}', '\u{2019}'], "'");
     candidate = TRAILING_COMMA_RE.replace_all(&candidate, "$1").to_string();
     candidate = fix_unescaped_chars_in_strings(&candidate);
     candidate = escape_inner_quotes(&candidate);

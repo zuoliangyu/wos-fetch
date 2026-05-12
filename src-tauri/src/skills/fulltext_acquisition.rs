@@ -42,34 +42,82 @@ static PII_RE: Lazy<Regex> = Lazy::new(|| {
 
 static PUBLISHER_MAP: Lazy<HashMap<&'static str, (&'static str, &'static str)>> = Lazy::new(|| {
     [
-        ("10.1016", ("Elsevier (ScienceDirect)", "https://www.sciencedirect.com")),
+        (
+            "10.1016",
+            ("Elsevier (ScienceDirect)", "https://www.sciencedirect.com"),
+        ),
         ("10.1038", ("Nature Portfolio", "https://www.nature.com")),
-        ("10.1039", ("Royal Society of Chemistry", "https://pubs.rsc.org")),
+        (
+            "10.1039",
+            ("Royal Society of Chemistry", "https://pubs.rsc.org"),
+        ),
         ("10.1021", ("ACS Publications", "https://pubs.acs.org")),
-        ("10.1002", ("Wiley Online Library", "https://onlinelibrary.wiley.com")),
-        ("10.1111", ("Wiley Online Library", "https://onlinelibrary.wiley.com")),
+        (
+            "10.1002",
+            ("Wiley Online Library", "https://onlinelibrary.wiley.com"),
+        ),
+        (
+            "10.1111",
+            ("Wiley Online Library", "https://onlinelibrary.wiley.com"),
+        ),
         ("10.1007", ("Springer", "https://link.springer.com")),
-        ("10.1186", ("BioMed Central", "https://www.biomedcentral.com")),
-        ("10.1080", ("Taylor & Francis", "https://www.tandfonline.com")),
-        ("10.1093", ("Oxford University Press", "https://academic.oup.com")),
+        (
+            "10.1186",
+            ("BioMed Central", "https://www.biomedcentral.com"),
+        ),
+        (
+            "10.1080",
+            ("Taylor & Francis", "https://www.tandfonline.com"),
+        ),
+        (
+            "10.1093",
+            ("Oxford University Press", "https://academic.oup.com"),
+        ),
         ("10.1126", ("Science (AAAS)", "https://www.science.org")),
         ("10.1136", ("BMJ", "https://www.bmj.com")),
         ("10.1073", ("PNAS", "https://www.pnas.org")),
-        ("10.1103", ("American Physical Society", "https://journals.aps.org")),
-        ("10.1017", ("Cambridge University Press", "https://www.cambridge.org")),
+        (
+            "10.1103",
+            ("American Physical Society", "https://journals.aps.org"),
+        ),
+        (
+            "10.1017",
+            ("Cambridge University Press", "https://www.cambridge.org"),
+        ),
         ("10.1109", ("IEEE Xplore", "https://ieeexplore.ieee.org")),
         ("10.1145", ("ACM Digital Library", "https://dl.acm.org")),
-        ("10.1056", ("New England Journal of Medicine", "https://www.nejm.org")),
+        (
+            "10.1056",
+            ("New England Journal of Medicine", "https://www.nejm.org"),
+        ),
         ("10.1001", ("JAMA Network", "https://jamanetwork.com")),
         ("10.1177", ("SAGE Journals", "https://journals.sagepub.com")),
         ("10.1097", ("Wolters Kluwer", "https://journals.lww.com")),
         ("10.1371", ("PLOS", "https://plos.org")),
         ("10.3390", ("MDPI", "https://www.mdpi.com")),
         ("10.3389", ("Frontiers", "https://www.frontiersin.org")),
-        ("10.1152", ("American Physiological Society", "https://journals.physiology.org")),
-        ("10.1128", ("American Society for Microbiology", "https://journals.asm.org")),
-        ("10.4049", ("The Journal of Immunology", "https://www.jimmunol.org")),
-        ("10.2147", ("Dove Medical Press", "https://www.dovepress.com")),
+        (
+            "10.1152",
+            (
+                "American Physiological Society",
+                "https://journals.physiology.org",
+            ),
+        ),
+        (
+            "10.1128",
+            (
+                "American Society for Microbiology",
+                "https://journals.asm.org",
+            ),
+        ),
+        (
+            "10.4049",
+            ("The Journal of Immunology", "https://www.jimmunol.org"),
+        ),
+        (
+            "10.2147",
+            ("Dove Medical Press", "https://www.dovepress.com"),
+        ),
     ]
     .into_iter()
     .collect()
@@ -99,7 +147,10 @@ async fn throttle_per_host(url: &str, min_seconds: f64) {
     let wait = {
         let mut guard = HOST_LAST_REQUEST.lock();
         let now = Instant::now();
-        let last = guard.get(&host).copied().unwrap_or(now - Duration::from_secs(3600));
+        let last = guard
+            .get(&host)
+            .copied()
+            .unwrap_or(now - Duration::from_secs(3600));
         let min_dur = Duration::from_secs_f64(min_seconds);
         let scheduled = std::cmp::max(now, last + min_dur);
         guard.insert(host, scheduled);
@@ -175,7 +226,9 @@ fn normalize_url(input: &str, base: &str) -> String {
 }
 
 fn replace_url_path(url: &str, source: &str, target: &str) -> String {
-    let Ok(parsed) = Url::parse(url) else { return String::new() };
+    let Ok(parsed) = Url::parse(url) else {
+        return String::new();
+    };
     if !parsed.path().contains(source) {
         return String::new();
     }
@@ -194,13 +247,30 @@ pub fn build_candidate_urls(landing_url: &str, html: &str) -> Vec<String> {
         .unwrap_or_default();
 
     if lower.contains("sciencedirect.com") {
-        candidates.push(replace_url_path(landing_url, "/science/article/abs/pii/", "/science/article/pii/"));
-        candidates.push(replace_url_path(landing_url, "/science/article/abs/", "/science/article/"));
+        candidates.push(replace_url_path(
+            landing_url,
+            "/science/article/abs/pii/",
+            "/science/article/pii/",
+        ));
+        candidates.push(replace_url_path(
+            landing_url,
+            "/science/article/abs/",
+            "/science/article/",
+        ));
     }
-    if (lower.contains("sciencedirect.com") || lower.contains("linkinghub.elsevier.com")) && !pii.is_empty() {
-        candidates.push(format!("https://www.sciencedirect.com/science/article/pii/{pii}"));
+    if (lower.contains("sciencedirect.com") || lower.contains("linkinghub.elsevier.com"))
+        && !pii.is_empty()
+    {
+        candidates.push(format!(
+            "https://www.sciencedirect.com/science/article/pii/{pii}"
+        ));
     }
-    for host in ["wiley.com", "onlinelibrary.wiley.com", "tandfonline.com", "sagepub.com"] {
+    for host in [
+        "wiley.com",
+        "onlinelibrary.wiley.com",
+        "tandfonline.com",
+        "sagepub.com",
+    ] {
         if lower.contains(host) {
             candidates.push(replace_url_path(landing_url, "/doi/abs/", "/doi/full/"));
         }
@@ -208,7 +278,11 @@ pub fn build_candidate_urls(landing_url: &str, html: &str) -> Vec<String> {
 
     if !html.is_empty() {
         let document = Html::parse_document(html);
-        for name in ["citation_fulltext_html_url", "citation_full_html_url", "citation_html_url"] {
+        for name in [
+            "citation_fulltext_html_url",
+            "citation_full_html_url",
+            "citation_html_url",
+        ] {
             let selector_str = format!("meta[name=\"{name}\"]");
             // Discard the Err before it leaves scope so its lifetime doesn't escape.
             let sel = Selector::parse(&selector_str).ok();
@@ -223,12 +297,18 @@ pub fn build_candidate_urls(landing_url: &str, html: &str) -> Vec<String> {
         if let Ok(link_sel) = Selector::parse("a[href]") {
             for link in document.select(&link_sel) {
                 let href = link.value().attr("href").unwrap_or("").trim().to_string();
-                let label_text: String = link.text().collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+                let label_text: String = link
+                    .text()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .to_ascii_lowercase();
                 let href_lower = href.to_ascii_lowercase();
                 let matches_label = ["full text", "full article", "html"]
                     .iter()
                     .any(|t| label_text.contains(t));
-                let matches_href = ["/fulltext", "/doi/full"].iter().any(|t| href_lower.contains(t));
+                let matches_href = ["/fulltext", "/doi/full"]
+                    .iter()
+                    .any(|t| href_lower.contains(t));
                 if matches_label || matches_href {
                     candidates.push(normalize_url(&href, landing_url));
                 }
@@ -261,7 +341,12 @@ const NOISE_TAGS: &[&str] = &[
     "dialog", "button", "input", "select", "textarea",
 ];
 const NOISE_CLASS_KEYWORDS: &[&str] = &[
-    "cookie", "advertisement", "share", "social", "related", "recommended",
+    "cookie",
+    "advertisement",
+    "share",
+    "social",
+    "related",
+    "recommended",
 ];
 
 fn is_noise_node(element: &ElementRef) -> bool {
@@ -269,11 +354,17 @@ fn is_noise_node(element: &ElementRef) -> bool {
     if NOISE_TAGS.contains(&tag) {
         return true;
     }
-    let class_attr = element.value().attr("class").unwrap_or("").to_ascii_lowercase();
+    let class_attr = element
+        .value()
+        .attr("class")
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if class_attr.is_empty() {
         return false;
     }
-    NOISE_CLASS_KEYWORDS.iter().any(|kw| class_attr.contains(kw))
+    NOISE_CLASS_KEYWORDS
+        .iter()
+        .any(|kw| class_attr.contains(kw))
 }
 
 fn collect_text_from(element: ElementRef) -> String {
@@ -292,7 +383,7 @@ fn collect_text_recursive(element: ElementRef, out: &mut Vec<String>) {
             if !line.is_empty() {
                 out.push(line.to_string());
             }
-        } else if let Some(_) = node.value().as_element() {
+        } else if node.value().as_element().is_some() {
             if let Some(child) = ElementRef::wrap(node) {
                 collect_text_recursive(child, out);
             }
@@ -302,15 +393,30 @@ fn collect_text_recursive(element: ElementRef, out: &mut Vec<String>) {
 
 fn score_text(text: &str) -> (usize, i32, usize) {
     let lower = text.to_ascii_lowercase();
-    let section_hits: i32 = ["abstract", "introduction", "methods", "results", "discussion", "references"]
-        .iter()
-        .map(|m| if lower.contains(m) { 1 } else { 0 })
-        .sum();
-    let noise_hits: i32 = ["cookie", "sign in", "recommended articles", "related articles"]
-        .iter()
-        .map(|m| if lower.contains(m) { 1 } else { 0 })
-        .sum();
-    let paragraphs = lower.matches("\n\n").count().max(lower.matches('\n').count());
+    let section_hits: i32 = [
+        "abstract",
+        "introduction",
+        "methods",
+        "results",
+        "discussion",
+        "references",
+    ]
+    .iter()
+    .map(|m| if lower.contains(m) { 1 } else { 0 })
+    .sum();
+    let noise_hits: i32 = [
+        "cookie",
+        "sign in",
+        "recommended articles",
+        "related articles",
+    ]
+    .iter()
+    .map(|m| if lower.contains(m) { 1 } else { 0 })
+    .sum();
+    let paragraphs = lower
+        .matches("\n\n")
+        .count()
+        .max(lower.matches('\n').count());
     (text.len(), section_hits - noise_hits, paragraphs)
 }
 
@@ -524,7 +630,9 @@ pub async fn acquire_article_fulltext_with_browser_fallback(
     if landing_url.is_empty() {
         return result;
     }
-    match crate::skills::wos_browser::browser::fetch_fulltext_via_browser(&landing_url, debug_port).await {
+    match crate::skills::wos_browser::browser::fetch_fulltext_via_browser(&landing_url, debug_port)
+        .await
+    {
         Ok(payload) => {
             let source_url = if payload.url.is_empty() {
                 landing_url.clone()

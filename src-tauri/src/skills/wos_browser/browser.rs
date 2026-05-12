@@ -12,9 +12,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use super::cdp::{evaluate_js, prepare_page_session, wait_for_condition, CdpSession};
-use super::tools::{
-    close_debug_target, get_page_targets, open_debug_target, DebugTarget,
-};
+use super::tools::{close_debug_target, get_page_targets, open_debug_target, DebugTarget};
 use crate::{AppError, AppResult};
 
 const ARTICLE_PAYLOAD_JS: &str = r#"
@@ -178,8 +176,7 @@ async fn collect_article_page_payload(
             });
         }
     };
-    let payload: BrowserFulltextPayload =
-        serde_json::from_value(value).map_err(AppError::from)?;
+    let payload: BrowserFulltextPayload = serde_json::from_value(value).map_err(AppError::from)?;
     Ok(payload)
 }
 
@@ -195,7 +192,14 @@ async fn click_article_entrypoint(session: &mut CdpSession) -> AppResult<Article
     let value = evaluate_js(session, ARTICLE_CLICK_JS).await?;
     let obj = match value {
         Value::Object(m) => m,
-        _ => return Ok(ArticleClickResult { clicked: false, label: String::new(), href: String::new(), score: 0 }),
+        _ => {
+            return Ok(ArticleClickResult {
+                clicked: false,
+                label: String::new(),
+                href: String::new(),
+                score: 0,
+            })
+        }
     };
     Ok(ArticleClickResult {
         clicked: obj.get("clicked").and_then(Value::as_bool).unwrap_or(false),
@@ -222,7 +226,7 @@ fn should_click_article_entrypoint(
     if lowered.contains("ieeexplore.ieee.org/document/") {
         return false;
     }
-    let threshold = (min_wait_seconds.max(0.0).min(4.0)) as f64;
+    let threshold = min_wait_seconds.clamp(0.0, 4.0);
     elapsed_on_page.as_secs_f64() >= threshold
 }
 
@@ -252,10 +256,7 @@ async fn wait_for_new_page_target(
 /// Main entry point: open `url` in a new debug target, wait for it to settle,
 /// optionally click a "Full text" entry point, and return the harvested
 /// payload. Closes the temporary target when sufficient text was acquired.
-pub async fn fetch_fulltext_via_browser(
-    url: &str,
-    port: u16,
-) -> AppResult<BrowserFulltextPayload> {
+pub async fn fetch_fulltext_via_browser(url: &str, port: u16) -> AppResult<BrowserFulltextPayload> {
     fetch_fulltext_via_browser_full(url, port, 18.0, 4000, 0.0).await
 }
 
@@ -287,14 +288,15 @@ pub async fn fetch_fulltext_via_browser_full(
     let mut sessions_to_close: Vec<CdpSession> = Vec::new();
     let mut active_target = initial_target.clone();
 
-    let close_path = async |sessions_to_close: Vec<CdpSession>, opened_targets: Vec<String>, port: u16| {
-        for s in sessions_to_close.into_iter().rev() {
-            s.close().await;
-        }
-        for tid in opened_targets.into_iter().rev() {
-            let _ = close_debug_target(&tid, port).await;
-        }
-    };
+    let close_path =
+        async |sessions_to_close: Vec<CdpSession>, opened_targets: Vec<String>, port: u16| {
+            for s in sessions_to_close.into_iter().rev() {
+                s.close().await;
+            }
+            for tid in opened_targets.into_iter().rev() {
+                let _ = close_debug_target(&tid, port).await;
+            }
+        };
 
     let result = (async {
         prepare_page_session(&mut session).await?;
@@ -400,8 +402,7 @@ pub async fn fetch_fulltext_via_browser_full(
         }
     };
 
-    let has_sufficient_text =
-        payload.article_text_chars >= 4000 || payload.text_chars >= 4000;
+    let has_sufficient_text = payload.article_text_chars >= 4000 || payload.text_chars >= 4000;
     if has_sufficient_text {
         sessions_to_close.push(session);
         close_path(sessions_to_close, opened_targets, port).await;

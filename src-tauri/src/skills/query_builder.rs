@@ -23,8 +23,7 @@ static QUERY_LABEL_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^\s*(?i)(?:检索式|Search query|Query)\s*[:：]\s*").unwrap());
 static LIST_SPLIT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[;\n]+").unwrap());
 
-pub const PLANNER_SYSTEM_PROMPT: &str =
-    "你是学术综述任务规划器。遵守给定协议，只输出可解析 JSON。";
+pub const PLANNER_SYSTEM_PROMPT: &str = "你是学术综述任务规划器。遵守给定协议，只输出可解析 JSON。";
 
 pub const PLANNER_PROTOCOL: &str = r#"根据用户研究主题，生成综述检索与写作计划。计划必须连接后续 WoS 检索、全文获取、证据抽取和综述写作。
 
@@ -91,7 +90,9 @@ fn strip_wrapping_quotes(value: &str) -> String {
         let first = text.chars().next().unwrap();
         let last = text.chars().last().unwrap();
         if first == last && (first == '"' || first == '\'') {
-            return text[first.len_utf8()..text.len() - last.len_utf8()].trim().to_string();
+            return text[first.len_utf8()..text.len() - last.len_utf8()]
+                .trim()
+                .to_string();
         }
     }
     text.to_string()
@@ -115,18 +116,28 @@ pub async fn build_wos_search_query(
         WOS_QUERY_SYSTEM_PROMPT.into()
     };
     let messages = vec![
-        ChatMessage { role: "system".into(), content: system_prompt },
+        ChatMessage {
+            role: "system".into(),
+            content: system_prompt,
+        },
         ChatMessage {
             role: "user".into(),
             content: format!("中文研究主题或限制条件：\n{topic}"),
         },
     ];
-    let cfg = LlmConfig { temperature: Some(0.2), ..config.clone() };
+    let cfg = LlmConfig {
+        temperature: Some(0.2),
+        ..config.clone()
+    };
     let raw = chat_text(&cfg, &messages).await?;
     let fence_stripped = strip_markdown_fence(&raw);
     let unquoted = strip_wrapping_quotes(&fence_stripped);
     let cleaned = QUERY_LABEL_RE.replace(&unquoted, "").to_string();
-    let with_oa = if oa_only { append_oa_constraint(&cleaned) } else { cleaned };
+    let with_oa = if oa_only {
+        append_oa_constraint(&cleaned)
+    } else {
+        cleaned
+    };
     let validated = validate_wos_search_query(&with_oa)?;
     if validated.is_empty() {
         return Err(AppError::Llm("模型返回了空检索式。".into()));
@@ -159,14 +170,20 @@ fn as_string_list(value: &Value) -> Vec<String> {
         Value::Null => Vec::new(),
         other => {
             let text = other.to_string().trim().to_string();
-            if text.is_empty() { Vec::new() } else { vec![text] }
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![text]
+            }
         }
     }
 }
 
 fn as_string_dict(value: &Value) -> BTreeMap<String, String> {
     let mut result = BTreeMap::new();
-    let Some(obj) = value.as_object() else { return result };
+    let Some(obj) = value.as_object() else {
+        return result;
+    };
     for (key, item) in obj {
         let key_text = key.trim();
         if key_text.is_empty() {
@@ -206,7 +223,9 @@ fn normalize_directions(value: &Value) -> AppResult<Vec<Map<String, Value>>> {
     let items = value.as_array().cloned().unwrap_or_default();
     let mut directions: Vec<Map<String, Value>> = Vec::new();
     for (index, item) in items.iter().enumerate() {
-        let Some(obj) = item.as_object() else { continue };
+        let Some(obj) = item.as_object() else {
+            continue;
+        };
         let query_raw = extract_str(obj, &["search_query", "wos_query", "query"]);
         if query_raw.is_empty() {
             continue;
@@ -228,11 +247,18 @@ fn normalize_directions(value: &Value) -> AppResult<Vec<Map<String, Value>>> {
             .map(str::to_string)
             .unwrap_or_default();
         if direction_index.is_empty() {
-            entry.insert("direction_index".into(), Value::String((index + 1).to_string()));
+            entry.insert(
+                "direction_index".into(),
+                Value::String((index + 1).to_string()),
+            );
         }
         let name = {
             let n = extract_str(obj, &["direction_name", "name"]);
-            if n.is_empty() { format!("Direction {}", index + 1) } else { n }
+            if n.is_empty() {
+                format!("Direction {}", index + 1)
+            } else {
+                n
+            }
         };
         entry.insert("direction_name".into(), Value::String(name));
         entry.insert(
@@ -267,7 +293,9 @@ fn normalize_directions(value: &Value) -> AppResult<Vec<Map<String, Value>>> {
 }
 
 fn normalize_named_items(value: &Value, name_key: &str) -> Vec<Map<String, Value>> {
-    let Some(items) = value.as_array() else { return Vec::new() };
+    let Some(items) = value.as_array() else {
+        return Vec::new();
+    };
     let mut result: Vec<Map<String, Value>> = Vec::new();
     for item in items {
         if let Some(obj) = item.as_object() {
@@ -324,9 +352,7 @@ pub fn normalize_review_plan(payload: Value) -> AppResult<Value> {
     let mut plan = Map::new();
     plan.insert(
         "normalized_topic".into(),
-        Value::String(
-            extract_str(&payload, &["normalized_topic", "topic"]).to_string(),
-        ),
+        Value::String(extract_str(&payload, &["normalized_topic", "topic"]).to_string()),
     );
     plan.insert(
         "inferred_domain".into(),
@@ -348,7 +374,12 @@ pub fn normalize_review_plan(payload: Value) -> AppResult<Value> {
     let scope_dict = as_string_dict(payload.get("scope_boundaries").unwrap_or(&Value::Null));
     plan.insert(
         "scope_boundaries".into(),
-        Value::Object(scope_dict.into_iter().map(|(k, v)| (k, Value::String(v))).collect()),
+        Value::Object(
+            scope_dict
+                .into_iter()
+                .map(|(k, v)| (k, Value::String(v)))
+                .collect(),
+        ),
     );
     plan.insert(
         "inclusion_criteria".into(),
@@ -396,7 +427,10 @@ pub fn normalize_review_plan(payload: Value) -> AppResult<Value> {
     );
     plan.insert(
         "plan_risks".into(),
-        payload.get("plan_risks").cloned().unwrap_or(Value::Array(Vec::new())),
+        payload
+            .get("plan_risks")
+            .cloned()
+            .unwrap_or(Value::Array(Vec::new())),
     );
 
     let has_review_only = directions.iter().any(|d| {
@@ -451,10 +485,19 @@ pub async fn build_review_plan(
         "## 规划协议\n{PLANNER_PROTOCOL}\n\n## 当前任务\n研究主题：{topic}\n检索方向数量规则：{count_instruction}{oa_block}\n\n优先保持计划简洁实用，不要为了完整性堆叠过多层级。如果主题边界清晰，优先返回更少但更高质量的检索方向。\n\n请只返回符合协议的 JSON 对象，不要返回 Markdown、解释或代码块。",
     );
     let messages = vec![
-        ChatMessage { role: "system".into(), content: PLANNER_SYSTEM_PROMPT.into() },
-        ChatMessage { role: "user".into(), content: user_prompt },
+        ChatMessage {
+            role: "system".into(),
+            content: PLANNER_SYSTEM_PROMPT.into(),
+        },
+        ChatMessage {
+            role: "user".into(),
+            content: user_prompt,
+        },
     ];
-    let cfg = LlmConfig { temperature: Some(0.25), ..config.clone() };
+    let cfg = LlmConfig {
+        temperature: Some(0.25),
+        ..config.clone()
+    };
     let raw = chat_text(&cfg, &messages).await?;
     let parsed = load_json_object(&raw)?;
     let mut plan = normalize_review_plan(parsed)?;
@@ -467,12 +510,19 @@ pub async fn build_review_plan(
 /// Walk every `search_directions[*].search_query` and ensure it carries an
 /// `OA=` constraint. Run after `normalize_review_plan` when `oa_only` is on.
 fn enforce_oa_on_plan(plan: &mut Value) {
-    let Some(directions) = plan.get_mut("search_directions").and_then(Value::as_array_mut) else {
+    let Some(directions) = plan
+        .get_mut("search_directions")
+        .and_then(Value::as_array_mut)
+    else {
         return;
     };
     for direction in directions {
-        let Some(obj) = direction.as_object_mut() else { continue };
-        let Some(query) = obj.get("search_query").and_then(Value::as_str) else { continue };
+        let Some(obj) = direction.as_object_mut() else {
+            continue;
+        };
+        let Some(query) = obj.get("search_query").and_then(Value::as_str) else {
+            continue;
+        };
         let updated = append_oa_constraint(query);
         obj.insert("search_query".into(), Value::String(updated));
     }
@@ -538,7 +588,11 @@ mod tests {
         enforce_oa_on_plan(&mut plan);
         let dirs = plan["search_directions"].as_array().unwrap();
         for d in dirs {
-            assert!(d["search_query"].as_str().unwrap().to_ascii_uppercase().contains("OA="));
+            assert!(d["search_query"]
+                .as_str()
+                .unwrap()
+                .to_ascii_uppercase()
+                .contains("OA="));
         }
         // idempotent on the third entry
         assert_eq!(
