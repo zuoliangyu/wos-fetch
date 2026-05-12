@@ -56,6 +56,20 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Extract changelog section
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            echo "body<<CHANGELOG_EOF"
+            awk -v ver="$VERSION" '
+              /^## \[/ { if (found) exit; if (index($0, "[" ver "]")) { found=1; next } }
+              found { print }
+            ' CHANGELOG.md
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -67,6 +81,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'wos-fetch ${{ github.ref_name }}'
           releaseBody: |
+            ${{ steps.changelog.outputs.body }}
+
             ## Downloads
 
             | Platform | Installer | Portable |
