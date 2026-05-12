@@ -1,22 +1,3 @@
-# --- Python (legacy, will be removed) ---
-.venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-.env
-.env.*
-!.env.example
-
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-fetch_result.xlsx
-fetch_result.zip
-*.tmp
-
 # --- Node / Vite ---
 node_modules/
 dist/
@@ -32,6 +13,11 @@ target/
 src-tauri/target/
 src-tauri/gen/schemas/
 *.pdb
+
+# --- Local env / secrets ---
+.env
+.env.*
+!.env.example
 
 # --- Editor / OS ---
 .DS_Store
