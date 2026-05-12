@@ -2,7 +2,9 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [SemVer](https://semver.org/lang/zh-CN/) 约定。
 
-## [Unreleased]
+## [0.1.0] - 2026-05-12
+
+首个公开发布版本：Tauri 桌面应用全量重写。
 
 ### Added
 
