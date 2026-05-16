@@ -333,6 +333,13 @@ pub async fn launch_chrome_debug(
         .arg("--no-default-browser-check")
         .arg("--disable-background-mode")
         .arg("--disable-session-crashed-bubble")
+        // Without these, the freshly spawned window is occluded by the Tauri
+        // app window, so Chromium's occlusion calc paints it black until it
+        // gains focus — the "black flash" on launch. Disabling occlusion
+        // tracking and occluded-window backgrounding keeps it painting.
+        .arg("--disable-features=CalculateNativeWinOcclusion")
+        .arg("--disable-backgrounding-occluded-windows")
+        .arg("--disable-renderer-backgrounding")
         .arg("--window-position=40,40")
         .arg("--window-size=1320,900")
         .arg("--new-window")

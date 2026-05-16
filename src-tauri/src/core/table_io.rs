@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 
-use calamine::{open_workbook_from_rs, Data, Reader, Xlsx};
+use calamine::{open_workbook_from_rs, Data, Reader, Xls, Xlsx};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rust_xlsxwriter::Workbook;
@@ -144,14 +144,41 @@ pub fn read_table(bytes: &[u8], filename: &str) -> AppResult<Table> {
         return read_csv_with_encoding_fallback(bytes);
     }
     if name.ends_with(".xlsx") || name.ends_with(".xls") {
-        return read_xlsx_bytes(bytes);
+        return read_spreadsheet_bytes(bytes);
+    }
+    if name.ends_with(".json") {
+        return read_json_bytes(bytes);
     }
     if name.ends_with(".zip") {
         return read_zip_table(bytes);
     }
     Err(AppError::BadInput(
-        "Only .xlsx, .xls, .csv, and .zip files are supported.".into(),
+        "Only .xlsx, .xls, .csv, .json, and .zip files are supported.".into(),
     ))
+}
+
+/// CFB / OLE2 compound document magic — used by legacy binary .xls (BIFF8).
+const OLE_CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+/// ZIP local file header magic — XLSX is a ZIP container.
+const ZIP_MAGIC: [u8; 4] = [0x50, 0x4B, 0x03, 0x04];
+
+fn read_spreadsheet_bytes(bytes: &[u8]) -> AppResult<Table> {
+    if bytes.len() >= OLE_CFB_MAGIC.len() && bytes.starts_with(&OLE_CFB_MAGIC) {
+        return read_xls_bytes(bytes);
+    }
+    if bytes.len() >= ZIP_MAGIC.len() && bytes.starts_with(&ZIP_MAGIC) {
+        return read_xlsx_bytes(bytes);
+    }
+    // Unknown magic — try xlsx first, then xls, so we surface the more
+    // informative error if both fail.
+    match read_xlsx_bytes(bytes) {
+        Ok(t) => Ok(t),
+        Err(xlsx_err) => read_xls_bytes(bytes).map_err(|xls_err| {
+            AppError::Excel(format!(
+                "Could not parse spreadsheet as XLSX ({xlsx_err}) or XLS ({xls_err})"
+            ))
+        }),
+    }
 }
 
 fn decode_csv_with_encoding(bytes: &[u8], encoding_label: &str) -> Option<String> {
@@ -237,7 +264,83 @@ fn read_xlsx_bytes(bytes: &[u8]) -> AppResult<Table> {
         .ok_or_else(|| AppError::Excel("xlsx contains no sheets".into()))?;
     let range = workbook
         .worksheet_range(&first_sheet)
-        .map_err(|e| AppError::Excel(format!("Failed to read sheet '{first_sheet}': {e}")))?;
+        .map_err(|e| AppError::Excel(format!("Failed to read xlsx sheet '{first_sheet}': {e}")))?;
+    table_from_range(&range)
+}
+
+fn read_xls_bytes(bytes: &[u8]) -> AppResult<Table> {
+    let cursor = Cursor::new(bytes.to_vec());
+    let mut workbook: Xls<_> = open_workbook_from_rs(cursor)
+        .map_err(|e| AppError::Excel(format!("Failed to open xls: {e}")))?;
+    let first_sheet = workbook
+        .sheet_names()
+        .first()
+        .cloned()
+        .ok_or_else(|| AppError::Excel("xls contains no sheets".into()))?;
+    let range = workbook
+        .worksheet_range(&first_sheet)
+        .map_err(|e| AppError::Excel(format!("Failed to read xls sheet '{first_sheet}': {e}")))?;
+    table_from_range(&range)
+}
+
+/// Read a JSON document as a Table.
+///
+/// Accepted shapes:
+/// - Array of objects: `[{"col": "val", ...}, ...]` (column order = order of first
+///   appearance of each key across the whole array, so later rows can introduce
+///   new columns without dropping cells).
+/// - Object with explicit shape: `{"columns": ["a","b"], "rows": [{"a":1,"b":2}, ...]}`.
+fn read_json_bytes(bytes: &[u8]) -> AppResult<Table> {
+    let stripped = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    let parsed: Value = serde_json::from_slice(stripped)
+        .map_err(|e| AppError::BadInput(format!("Invalid JSON: {e}")))?;
+    match parsed {
+        Value::Array(items) => table_from_json_rows(&items, None),
+        Value::Object(map) => {
+            let rows_val = map.get("rows").or_else(|| map.get("data")).ok_or_else(|| {
+                AppError::BadInput(
+                    "JSON object must contain a 'rows' (or 'data') array of records.".into(),
+                )
+            })?;
+            let rows = rows_val.as_array().ok_or_else(|| {
+                AppError::BadInput("JSON 'rows'/'data' must be an array of objects.".into())
+            })?;
+            let explicit_columns = map.get("columns").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter()
+                    .filter_map(|c| c.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>()
+            });
+            table_from_json_rows(rows, explicit_columns.as_deref())
+        }
+        _ => Err(AppError::BadInput(
+            "JSON must be an array of objects, or an object with a 'rows' array.".into(),
+        )),
+    }
+}
+
+fn table_from_json_rows(items: &[Value], explicit_columns: Option<&[String]>) -> AppResult<Table> {
+    let mut columns: Vec<String> = explicit_columns.map(|c| c.to_vec()).unwrap_or_default();
+    let mut seen: HashSet<String> = columns.iter().cloned().collect();
+    let mut rows: Vec<HashMap<String, Value>> = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        let obj = item.as_object().ok_or_else(|| {
+            AppError::BadInput(format!(
+                "JSON row {i} is not an object; every record must be a JSON object."
+            ))
+        })?;
+        let mut row: HashMap<String, Value> = HashMap::with_capacity(obj.len());
+        for (key, value) in obj {
+            if seen.insert(key.clone()) {
+                columns.push(key.clone());
+            }
+            row.insert(key.clone(), value.clone());
+        }
+        rows.push(row);
+    }
+    Ok(Table { columns, rows })
+}
+
+fn table_from_range(range: &calamine::Range<Data>) -> AppResult<Table> {
     let mut rows_iter = range.rows();
     let header_row = rows_iter
         .next()
@@ -1065,5 +1168,60 @@ mod tests {
         let table = parse_csv_text(csv).unwrap();
         assert_eq!(table.nrows(), 1);
         assert_eq!(cell_as_string(table.cell(0, "Article Title")), "Foo");
+    }
+
+    #[test]
+    fn json_array_of_objects_preserves_first_seen_column_order() {
+        let json = br#"[
+            {"Article Title": "Paper A", "DOI": "10.1/a"},
+            {"DOI": "10.1/b", "Article Title": "Paper B", "Authors": "Doe"}
+        ]"#;
+        let table = read_json_bytes(json).unwrap();
+        assert_eq!(
+            table.columns,
+            vec![
+                "Article Title".to_string(),
+                "DOI".to_string(),
+                "Authors".to_string(),
+            ]
+        );
+        assert_eq!(table.nrows(), 2);
+        assert_eq!(cell_as_string(table.cell(1, "Article Title")), "Paper B");
+        assert_eq!(cell_as_string(table.cell(0, "Authors")), "");
+    }
+
+    #[test]
+    fn json_object_with_explicit_columns_and_rows() {
+        let json = br#"{
+            "columns": ["DOI", "Article Title"],
+            "rows": [{"Article Title": "X", "DOI": "10.1/x"}]
+        }"#;
+        let table = read_json_bytes(json).unwrap();
+        // Explicit columns come first, in declared order.
+        assert_eq!(table.columns[0], "DOI");
+        assert_eq!(table.columns[1], "Article Title");
+        assert_eq!(cell_as_string(table.cell(0, "DOI")), "10.1/x");
+    }
+
+    #[test]
+    fn json_with_utf8_bom_is_accepted() {
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(br#"[{"a": 1}]"#);
+        let table = read_json_bytes(&bytes).unwrap();
+        assert_eq!(table.nrows(), 1);
+        assert_eq!(table.columns, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn json_non_object_row_is_rejected() {
+        let err = read_json_bytes(br#"[1, 2, 3]"#).unwrap_err();
+        assert!(matches!(err, AppError::BadInput(_)));
+    }
+
+    #[test]
+    fn read_table_unknown_extension_lists_json() {
+        let err = read_table(b"whatever", "foo.txt").unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(msg.contains(".json"), "error should advertise .json: {msg}");
     }
 }

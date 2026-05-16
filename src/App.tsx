@@ -19,6 +19,7 @@ import {
   Download,
   ShieldAlert,
   RefreshCw,
+  ChevronDown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -883,6 +884,114 @@ function Footer() {
 // Sections
 // ----------------------------------------------------------------------------
 
+function ModelCombobox({
+  value,
+  onChange,
+  options,
+  onScan,
+  scanBusy,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+  onScan: () => void;
+  scanBusy: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [open]);
+
+  const q = value.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!q) return options;
+    // If the value already equals the only/exact option, show the full list
+    // so a click still lets you switch away from it.
+    if (options.some((m) => m.toLowerCase() === q)) return options;
+    return options.filter((m) => m.toLowerCase().includes(q));
+  }, [options, q]);
+
+  return (
+    <div className="flex gap-2">
+      <div ref={wrapRef} className="relative flex-1">
+        <Input
+          value={value}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+          placeholder="gpt-4o-mini"
+          className="pr-9"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => setOpen((o) => !o)}
+          aria-label="展开模型列表"
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+          />
+        </button>
+        {open && options.length > 0 && (
+          <div className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border border-border bg-card p-1 shadow-lg">
+            {filtered.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-muted-foreground">
+                无匹配模型（仍可手动输入并直接使用）
+              </div>
+            ) : (
+              filtered.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    onChange(m);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "block w-full rounded px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                    m === value && "bg-accent font-medium"
+                  )}
+                >
+                  {m}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        onClick={onScan}
+        disabled={scanBusy}
+        aria-label="扫描可用模型"
+        title="扫描 base_url 下的可用模型"
+      >
+        <RefreshCw className={cn("h-4 w-4", scanBusy && "animate-spin")} />
+      </Button>
+    </div>
+  );
+}
+
 function LlmSection(props: {
   model: string; setModel: (v: string) => void;
   baseUrl: string; setBaseUrl: (v: string) => void;
@@ -918,29 +1027,13 @@ function LlmSection(props: {
             ? `已扫描到 ${scannedModels.length} 个模型 — 在输入框点击或开始打字可下拉选择`
             : "可手动填写，或点击右侧扫描按钮拉取 base URL 下可用模型"}
         >
-          <div className="flex gap-2">
-            <Input
-              list="wos-fetch-model-options"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              placeholder="gpt-4o-mini"
-              className="flex-1"
-            />
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={onScanModels}
-              disabled={scanBusy}
-              aria-label="扫描可用模型"
-              title="扫描 base_url 下的可用模型"
-            >
-              <RefreshCw className={cn("h-4 w-4", scanBusy && "animate-spin")} />
-            </Button>
-          </div>
-          <datalist id="wos-fetch-model-options">
-            {scannedModels.map((m) => <option key={m} value={m} />)}
-          </datalist>
+          <ModelCombobox
+            value={model}
+            onChange={setModel}
+            options={scannedModels}
+            onScan={onScanModels}
+            scanBusy={scanBusy}
+          />
         </Field>
         <Field label="Base URL" hint="OpenAI 兼容 endpoint，含 /v1">
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://e-flowcode.cc/v1" />
@@ -1191,11 +1284,11 @@ function InputSection(props: {
           </>
         ) : (
           <>
-            <Field label="选择文件（.csv / .xlsx / .xls / .zip）">
+            <Field label="选择文件（.csv / .xlsx / .xls / .json / .zip）">
               <input
                 type="file"
                 ref={uploadInputRef}
-                accept=".csv,.xlsx,.xls,.zip"
+                accept=".csv,.xlsx,.xls,.json,.zip"
                 className="block w-full text-xs file:mr-3 file:rounded-md file:border-0 file:bg-secondary file:px-3 file:py-1.5 file:text-secondary-foreground file:hover:bg-secondary/80"
               />
             </Field>
