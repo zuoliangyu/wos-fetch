@@ -1,6 +1,6 @@
 [package]
 name = "wos-fetch"
-version = "0.2.0"
+version = "0.2.1"
 description = "Web of Science literature fetcher"
 authors = ["zuoliangyu"]
 edition = "2021"

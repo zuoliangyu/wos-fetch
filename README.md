@@ -7,7 +7,7 @@
 一个面向本地使用场景的桌面应用（**Rust + Tauri 2 + React**），提供以下能力：
 
 - 连接已登录的 Chromium 浏览器，通过 Web of Science 页面执行检索并抓取结果
-- 上传 CSV / Excel / ZIP 格式的文献表
+- 上传 CSV / Excel / JSON / ZIP 格式的文献表
 - 使用 LLM 对记录做相关性筛选（可选「仅 OA 期刊」模式以降低封号风险）
 - 基于 DOI 批量获取文章全文，支持 HTTP 抓取和浏览器 fallback
 - 导出结果为 Excel 或 ZIP 包
@@ -72,7 +72,7 @@ msedge.exe --remote-debugging-port=9222 --user-data-dir=%TEMP%\wos-debug
 输入：
 
 - WoS 检索结果（应用内自动抓取）
-- 或手动上传 CSV / XLSX / XLS / ZIP
+- 或手动上传 CSV / XLSX / XLS / JSON / ZIP
 
 输出：
 

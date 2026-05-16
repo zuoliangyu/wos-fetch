@@ -2,6 +2,24 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 与 [SemVer](https://semver.org/lang/zh-CN/) 约定。
 
+## [0.2.1] - 2026-05-16
+
+下拉交互与浏览器启动体验修复，并补齐 JSON / 旧版 .xls 导入。
+
+### Added
+
+- **JSON 导入**：上传支持 `.json` 文献表，前端 `accept` 与后端 `table_io` 同步放开
+- **旧版二进制 `.xls`（BIFF8）导入**：基于 OLE/CFB 与 ZIP 魔数自动判别 xls/xlsx，未知格式时双解析回退并给出更友好的错误
+
+### Fixed
+
+- **模型下拉点击不筛选**：原生 `<datalist>` 在 WebView2 内核下只在打字时筛选、点箭头不做子串匹配。替换为受控 `ModelCombobox`，聚焦 / 点击 / 打字均展开并按大小写不敏感子串实时筛选，点击即选、Esc / 点外部关闭
+- **启动浏览器时黑屏一闪**：新启动的浏览器窗口被 Tauri 主窗口遮挡，Chromium 占用计算（`CalculateNativeWinOcclusion`）将其当作隐藏窗口画成黑色直到获焦。加入 `--disable-features=CalculateNativeWinOcclusion`、`--disable-backgrounding-occluded-windows`、`--disable-renderer-backgrounding`
+
+### Internal
+
+- 仓库去重：删除一份未被 git 跟踪的嵌套副本，源码全局只保留规范的仓库根目录一份
+
 ## [0.2.0] - 2026-05-12
 
 界面全面重做 + LLM 易用性增强。
